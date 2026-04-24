@@ -1,17 +1,10 @@
 # CLAUDE.md — skry プロジェクト
 
 このリポジトリは **skry**（Go + Bubble Tea 製の軽量 TUI 差分ビューア）の開発用です。
-新しいセッションで Claude Code を開いたときは、まず以下を読んでください。
+旧名は `peek`。名前衝突回避のため `skry` にリネーム（モジュールパス `github.com/ottaaa/skry`）。
 
-> 旧名は `peek` でした。名前衝突（`phw/peek` 等）回避のため `skry` にリネーム。
-> モジュールパスも `github.com/ottaaa/skry`。ローカルのディレクトリ名
-> (`~/ottaaa/peek`) はユーザが任意のタイミングで `mv` してください。
-
-## 必読ドキュメント（順番通り）
-
-1. [`docs/requirements.md`](./docs/requirements.md) — ユーザ要件のヒアリング結果
-2. [`docs/design.md`](./docs/design.md) — 技術設計（画面構成・キーバインド・データフロー）
-3. [`docs/roadmap.md`](./docs/roadmap.md) — マイルストーン M1〜M11
+README.md に機能概要・キーバインド・起動方法の一次ソースがあります。セッション開始時は
+まずそれを読んでください。
 
 ## プロジェクトの核となる決定事項（議論済み・再検討不要）
 
@@ -20,7 +13,7 @@
 - **シンタックスハイライト**: chroma
 - **diff**: `os/exec` で git CLI を呼び、`go-diff` で split 表示用にアラインメント
 - **検索**: ファジー検索は `sahilm/fuzzy`、全文 grep は ripgrep を優先、無ければ Go フォールバック
-- **キーバインド**: 編集中以外は **Ctrl を使わない**（単キー / Vim スタイル）。詳細は `docs/design.md`
+- **キーバインド**: 編集中以外は **Ctrl を使わない**（単キー / Vim スタイル）。一覧は `README.md` と `internal/helpui/helpui.go`
 - **配布**: 自分用（macOS）。`make build` で `bin/skry`。Homebrew tap / GoReleaser は現時点では用意しない
 
 ## 開発方針
@@ -28,7 +21,7 @@
 - **まず動かす**: マイルストーンを小さく積む。完璧主義で止まらない
 - **テスト**: ロジック層（git 操作、diff アラインメント、検索）はユニットテスト必須。UI 層は手動で確認
 - **依存最小**: 新しい依存を入れる前に、標準ライブラリや既採用ライブラリで済むか検討
-- **キーバインド変更時**: `docs/design.md` の表を必ず更新
+- **キーバインド変更時**: `README.md` のキーバインド表と `internal/helpui/helpui.go` のヘルプ文言を両方更新
 - **CI**: `.github/workflows/ci.yml` で push / PR 時に `go vet` + `go test -race` を実行
 
 ## 現在の状態

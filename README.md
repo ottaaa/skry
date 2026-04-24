@@ -38,8 +38,7 @@ reviewing AI-generated code across multiple worktrees.
 
 skry intentionally doesn't do destructive git operations (commit/push/pull,
 rebase, stash, branch create/delete, etc.) — that's left to your AI agent or
-regular git CLI. See [`docs/requirements.md`](./docs/requirements.md) for the
-full non-goals list.
+regular git CLI.
 
 ## Install
 
@@ -81,13 +80,6 @@ make vet
 Tests live next to the code (`internal/.../foo_test.go`). Logic layers (git
 parsing, diff alignment, search helpers) have unit tests; UI is verified by
 eye.
-
-## Docs
-
-- [`docs/requirements.md`](./docs/requirements.md) — requirements & non-goals
-- [`docs/design.md`](./docs/design.md) — architecture & key bindings table
-- [`docs/roadmap.md`](./docs/roadmap.md) — milestones M1–M11
-- [`CLAUDE.md`](./CLAUDE.md) — notes for working with Claude Code on this repo
 
 ## License
 
