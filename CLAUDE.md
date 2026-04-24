@@ -40,6 +40,7 @@ README.md に機能概要・キーバインド・起動方法の一次ソース�
 - [x] M9: パスコピー（y）+ ヘルプモーダル（?）
 - [x] M10: リネーム + LICENSE + CI（Homebrew / GoReleaser は保留）
 - [x] M11: Git 履歴（L）/ ブランチ切替（b）/ Blame（B）
+- [x] M12: fsnotify による自動再読込（ツリー・status・右ペイン、`.git` や `node_modules` は除外、編集中は抑止）
 
 ## コミット規約
 

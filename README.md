@@ -30,6 +30,10 @@ reviewing AI-generated code across multiple worktrees.
   - `b` — switch branches. Asks for confirmation (`--discard-changes`) when
     the working tree is dirty
   - `w` — switch between `git worktree`s
+- **Auto-reload** — the working tree is watched with `fsnotify`. When an AI
+  agent or another editor writes a file, the tree / statuses / right pane
+  refresh automatically (debounced 250 ms, `.git` and common cache dirs like
+  `node_modules` are ignored). Reload is suppressed while you are editing.
 - **Misc**
   - `y` — copy current file path to clipboard
   - `[` / `]` — resize the left pane (`<` / `>` / `Alt+h` / `Alt+l` also work)

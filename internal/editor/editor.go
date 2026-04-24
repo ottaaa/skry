@@ -559,14 +559,45 @@ func (m Model) renderStatus() string {
 }
 
 // Reload re-reads the working file (after an external change or a save).
+// Reload re-reads the working file after an external change. It is a no-op
+// when the user is actively editing (so we don't clobber their buffer) and
+// when the current mode is showing a commit-pinned view (commit diff, blame,
+// binary placeholder, folder listing) where the working tree is irrelevant.
 func (m *Model) Reload() {
 	if m.path == "" {
 		return
 	}
-	content, _ := readWorking(m.absPath)
+	if m.mode == ModeEdit || m.mode == ModeCommitDiff || m.mode == ModeFolder {
+		return
+	}
+	raw, err := readWorkingBytes(m.absPath)
+	if err != nil {
+		// File went away, or became unreadable. Leave the last-good view
+		// rather than flashing an error for what's often a transient rename.
+		return
+	}
+	if isBinary(raw) {
+		m.binarySize = int64(len(raw))
+		m.mode = ModeBinary
+		return
+	}
+	// If we were in Binary mode and the file is now text, drop back to View.
+	if m.mode == ModeBinary {
+		m.mode = ModeView
+	}
+	content := string(raw)
 	m.view.Load(m.path, content)
 	if m.mode == ModeSplit {
 		m.loadSplit(m.path, content)
+	}
+	if m.mode == ModeBlame {
+		// Blame needs a fresh run; fall back to View if it errors.
+		lines, err := git.Blame(m.repoRoot, "", m.path)
+		if err == nil && len(lines) > 0 {
+			m.blameLines = lines
+		} else {
+			m.mode = ModeView
+		}
 	}
 }
 

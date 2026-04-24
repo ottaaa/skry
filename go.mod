@@ -9,6 +9,7 @@ require (
 	github.com/charmbracelet/bubbletea v1.3.10
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.11.6
+	github.com/fsnotify/fsnotify v1.9.0
 	github.com/sahilm/fuzzy v0.1.1
 	github.com/sergi/go-diff v1.4.0
 )

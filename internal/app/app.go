@@ -20,6 +20,7 @@ import (
 	"github.com/ottaaa/skry/internal/modal"
 	"github.com/ottaaa/skry/internal/search"
 	"github.com/ottaaa/skry/internal/tree"
+	"github.com/ottaaa/skry/internal/watcher"
 	"github.com/ottaaa/skry/internal/worktreeui"
 )
 
@@ -50,6 +51,89 @@ type Model struct {
 	message  string
 
 	treeOuter int // current outer width of the tree pane; 0 = auto-init on first resize
+
+	watcher *watcher.Watcher
+}
+
+// fsChangedMsg is delivered when the file system watcher coalesced one or
+// more events. The handler refreshes statuses/file list and reloads the
+// editor's current file (if safe to do so).
+type fsChangedMsg struct{}
+
+// watcherStartedMsg delivers the watcher handle into the model so we can
+// both close it later and start waiting for its events.
+type watcherStartedMsg struct{ w *watcher.Watcher }
+
+func startWatcher(root string) tea.Cmd {
+	return func() tea.Msg {
+		w, err := watcher.Start(root)
+		if err != nil {
+			// Silently degrade: auto-reload is nice-to-have, not load-bearing.
+			return watcherStartedMsg{w: nil}
+		}
+		return watcherStartedMsg{w: w}
+	}
+}
+
+func waitForFS(w *watcher.Watcher) tea.Cmd {
+	if w == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		<-w.Events()
+		return fsChangedMsg{}
+	}
+}
+
+// fsReload is a lighter sibling of loadRepo: it refreshes the file list,
+// statuses, and branch, but leaves the editor's currently-open file in place
+// (loadRepo replaces the editor entirely, which would close the user's view).
+func fsReload(root string) tea.Cmd {
+	return func() tea.Msg {
+		files, err := git.ListFiles(root)
+		if err != nil {
+			return fsReloadedMsg{err: err}
+		}
+		entries, err := git.Statuses(root)
+		if err != nil {
+			return fsReloadedMsg{err: err}
+		}
+		statuses := map[string]git.Status{}
+		var sum summary
+		for _, e := range entries {
+			statuses[e.Path] = e.Status
+			switch e.Status {
+			case git.StatusModified:
+				sum.M++
+			case git.StatusAdded:
+				sum.A++
+			case git.StatusDeleted:
+				sum.D++
+			default:
+				sum.Other++
+			}
+		}
+		seen := make(map[string]bool, len(files))
+		for _, f := range files {
+			seen[f] = true
+		}
+		for _, e := range entries {
+			if !seen[e.Path] && e.Status != git.StatusDeleted {
+				files = append(files, e.Path)
+				seen[e.Path] = true
+			}
+		}
+		branch, _ := git.CurrentBranch(root)
+		return fsReloadedMsg{files: files, statuses: statuses, summary: sum, branch: branch}
+	}
+}
+
+type fsReloadedMsg struct {
+	files    []string
+	statuses map[string]git.Status
+	summary  summary
+	branch   string
+	err      error
 }
 
 type summary struct{ M, A, D, Other int }
@@ -67,7 +151,7 @@ func New(repoRoot string) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return loadRepo(m.repoRoot)
+	return tea.Batch(loadRepo(m.repoRoot), startWatcher(m.repoRoot))
 }
 
 type repoLoadedMsg struct {
@@ -234,6 +318,34 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editor.Reload()
 		return m, nil
 
+	case watcherStartedMsg:
+		if msg.w == nil {
+			return m, nil
+		}
+		m.watcher = msg.w
+		return m, waitForFS(m.watcher)
+
+	case fsChangedMsg:
+		// Coalesce any further events into the next refresh by issuing a
+		// single reload Cmd, then arm for the next watcher event.
+		return m, tea.Batch(fsReload(m.repoRoot), waitForFS(m.watcher))
+
+	case fsReloadedMsg:
+		if msg.err != nil {
+			// A partial read (e.g. git running in parallel) shouldn't be
+			// noisy. Swallow to avoid overwriting the user's status line.
+			return m, nil
+		}
+		m.files = msg.files
+		m.statuses = msg.statuses
+		m.summary = msg.summary
+		if msg.branch != "" {
+			m.branch = msg.branch
+		}
+		m.tree.SetFiles(msg.files, msg.statuses)
+		m.editor.Reload()
+		return m, nil
+
 	case events.OpenFileMsg:
 		return m.handleOpenFile(msg)
 
@@ -247,7 +359,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case events.SwitchWorktreeMsg:
 		m.modal = nil
-		return m, loadRepo(msg.Path)
+		if m.watcher != nil {
+			_ = m.watcher.Close()
+			m.watcher = nil
+		}
+		return m, tea.Batch(loadRepo(msg.Path), startWatcher(msg.Path))
 
 	case editor.SavedMsg:
 		return m, refreshStatus(m.repoRoot)
