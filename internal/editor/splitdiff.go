@@ -1,0 +1,172 @@
+package editor
+
+import (
+	"strings"
+
+	"github.com/charmbracelet/lipgloss"
+	"github.com/sergi/go-diff/diffmatchpatch"
+)
+
+type DiffOp int
+
+const (
+	DiffEqual DiffOp = iota
+	DiffChange
+	DiffAdd
+	DiffDel
+)
+
+type DiffRow struct {
+	Op       DiffOp
+	LeftNum  int // 1-based; 0 if absent
+	RightNum int // 1-based; 0 if absent
+	Left     string
+	Right    string
+}
+
+// AlignLines produces side-by-side aligned rows from two versions of a file.
+// Pairs adjacent delete/insert runs 1:1 as Change rows.
+func AlignLines(left, right string) []DiffRow {
+	dmp := diffmatchpatch.New()
+	a, b, lineArray := dmp.DiffLinesToChars(left, right)
+	diffs := dmp.DiffCharsToLines(dmp.DiffMain(a, b, false), lineArray)
+	var rows []DiffRow
+	leftNum, rightNum := 0, 0
+	i := 0
+	for i < len(diffs) {
+		d := diffs[i]
+		lines := splitKeep(d.Text)
+		switch d.Type {
+		case diffmatchpatch.DiffEqual:
+			for _, l := range lines {
+				leftNum++
+				rightNum++
+				rows = append(rows, DiffRow{Op: DiffEqual, LeftNum: leftNum, RightNum: rightNum, Left: l, Right: l})
+			}
+			i++
+		case diffmatchpatch.DiffDelete:
+			var nextIns []string
+			if i+1 < len(diffs) && diffs[i+1].Type == diffmatchpatch.DiffInsert {
+				nextIns = splitKeep(diffs[i+1].Text)
+			}
+			pairs := min(len(lines), len(nextIns))
+			for k := 0; k < pairs; k++ {
+				leftNum++
+				rightNum++
+				rows = append(rows, DiffRow{Op: DiffChange, LeftNum: leftNum, RightNum: rightNum, Left: lines[k], Right: nextIns[k]})
+			}
+			for k := pairs; k < len(lines); k++ {
+				leftNum++
+				rows = append(rows, DiffRow{Op: DiffDel, LeftNum: leftNum, Left: lines[k]})
+			}
+			for k := pairs; k < len(nextIns); k++ {
+				rightNum++
+				rows = append(rows, DiffRow{Op: DiffAdd, RightNum: rightNum, Right: nextIns[k]})
+			}
+			if nextIns != nil {
+				i += 2
+			} else {
+				i++
+			}
+		case diffmatchpatch.DiffInsert:
+			for _, l := range lines {
+				rightNum++
+				rows = append(rows, DiffRow{Op: DiffAdd, RightNum: rightNum, Right: l})
+			}
+			i++
+		}
+	}
+	return rows
+}
+
+// splitKeep splits a block of text into lines but drops the trailing empty
+// string that results from a final newline. An intentional empty line from
+// consecutive newlines is kept.
+func splitKeep(s string) []string {
+	if s == "" {
+		return nil
+	}
+	parts := strings.Split(s, "\n")
+	if len(parts) > 0 && parts[len(parts)-1] == "" {
+		parts = parts[:len(parts)-1]
+	}
+	return parts
+}
+
+func min(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// RenderSplit renders rows into a string of width `width`, paginated by top.
+func RenderSplit(rows []DiffRow, top, visible, width int) string {
+	if width < 20 {
+		width = 20
+	}
+	numW := 4
+	// width = numW + " " + lineW + sep + numW + " " + lineW
+	perSide := (width - 2*numW - 3) / 2
+	if perSide < 4 {
+		perSide = 4
+	}
+	var b strings.Builder
+	end := top + visible
+	if end > len(rows) {
+		end = len(rows)
+	}
+	delBg := lipgloss.NewStyle().Background(lipgloss.Color("#3a1f26"))
+	addBg := lipgloss.NewStyle().Background(lipgloss.Color("#1f3a2a"))
+	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3b4261"))
+	for i := top; i < end; i++ {
+		r := rows[i]
+		leftNum, rightNum := fmtNum(r.LeftNum, numW), fmtNum(r.RightNum, numW)
+		leftInner := fitANSI(r.Left, perSide)
+		rightInner := fitANSI(r.Right, perSide)
+		leftLine := leftNum + " " + leftInner
+		rightLine := rightNum + " " + rightInner
+		switch r.Op {
+		case DiffDel:
+			leftLine = delBg.Render(leftLine)
+		case DiffAdd:
+			rightLine = addBg.Render(rightLine)
+		case DiffChange:
+			leftLine = delBg.Render(leftLine)
+			rightLine = addBg.Render(rightLine)
+		}
+		b.WriteString(leftLine)
+		b.WriteString(sepStyle.Render("│"))
+		b.WriteString(rightLine)
+		if i < end-1 {
+			b.WriteByte('\n')
+		}
+	}
+	return b.String()
+}
+
+func fmtNum(n, w int) string {
+	if n == 0 {
+		return strings.Repeat(" ", w)
+	}
+	s := intToString(n)
+	if len(s) >= w {
+		return s
+	}
+	return strings.Repeat(" ", w-len(s)) + s
+}
+
+func intToString(n int) string {
+	if n == 0 {
+		return "0"
+	}
+	var buf [20]byte
+	i := len(buf)
+	for n > 0 {
+		i--
+		buf[i] = byte('0' + n%10)
+		n /= 10
+	}
+	return string(buf[i:])
+}
+

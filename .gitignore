@@ -1,0 +1,20 @@
+# Go
+bin/
+dist/
+*.exe
+*.test
+*.out
+coverage.html
+coverage.out
+
+# Editor
+.vscode/
+.idea/
+*.swp
+
+# macOS
+.DS_Store
+
+# Local config
+*.local
+.env
