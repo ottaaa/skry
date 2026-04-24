@@ -1,4 +1,4 @@
-module github.com/ottaaa/peek
+module github.com/ottaaa/skry
 
 go 1.25.5
 

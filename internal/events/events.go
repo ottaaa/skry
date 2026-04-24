@@ -18,6 +18,13 @@ type RefreshMsg struct{}
 
 type StatusRefreshedMsg struct{}
 
+// CursorMovedMsg fires from the tree whenever the highlighted node changes.
+// The app uses it to drive a preview of the right pane.
+type CursorMovedMsg struct {
+	Path  string
+	IsDir bool
+}
+
 // LogCommitSelectedMsg is emitted when a commit is picked from the log modal.
 type LogCommitSelectedMsg struct {
 	Sha     string

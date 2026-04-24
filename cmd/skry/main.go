@@ -8,7 +8,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 
-	"github.com/ottaaa/peek/internal/app"
+	"github.com/ottaaa/skry/internal/app"
 )
 
 var version = "dev"
@@ -16,7 +16,7 @@ var version = "dev"
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	flag.Usage = func() {
-		fmt.Fprintf(flag.CommandLine.Output(), "Usage: peek [flags] [path]\n\nFlags:\n")
+		fmt.Fprintf(flag.CommandLine.Output(), "Usage: skry [flags] [path]\n\nFlags:\n")
 		flag.PrintDefaults()
 	}
 	flag.Parse()
@@ -32,17 +32,17 @@ func main() {
 	}
 	abs, err := filepath.Abs(repoPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "peek: resolve path: %v\n", err)
+		fmt.Fprintf(os.Stderr, "skry: resolve path: %v\n", err)
 		os.Exit(1)
 	}
 	if info, err := os.Stat(abs); err != nil || !info.IsDir() {
-		fmt.Fprintf(os.Stderr, "peek: not a directory: %s\n", abs)
+		fmt.Fprintf(os.Stderr, "skry: not a directory: %s\n", abs)
 		os.Exit(1)
 	}
 
 	p := tea.NewProgram(app.New(abs), tea.WithAltScreen())
 	if _, err := p.Run(); err != nil {
-		fmt.Fprintf(os.Stderr, "peek: %v\n", err)
+		fmt.Fprintf(os.Stderr, "skry: %v\n", err)
 		os.Exit(1)
 	}
 }

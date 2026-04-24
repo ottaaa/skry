@@ -8,8 +8,8 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ottaaa/peek/internal/events"
-	"github.com/ottaaa/peek/internal/git"
+	"github.com/ottaaa/skry/internal/events"
+	"github.com/ottaaa/skry/internal/git"
 )
 
 type Node struct {
@@ -85,6 +85,17 @@ func (m Model) SelectedStatus() git.Status {
 	return m.rows[m.cursor].node.Status
 }
 
+// CurrentMsg returns a CursorMovedMsg describing the currently-selected node,
+// or the zero value when the tree is empty. Useful for triggering an initial
+// preview after SetFiles.
+func (m Model) CurrentMsg() events.CursorMovedMsg {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return events.CursorMovedMsg{}
+	}
+	n := m.rows[m.cursor].node
+	return events.CursorMovedMsg{Path: n.Path, IsDir: n.IsDir}
+}
+
 func (m *Model) SetSize(w, h int) { m.width, m.height = w, h }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -98,17 +109,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			m.filterOn = false
 			m.filter = ""
 			m.rebuildRows()
+			return m, m.cursorCmd()
 		case "enter":
 			m.filterOn = false
 		case "backspace":
 			if len(m.filter) > 0 {
 				m.filter = m.filter[:len(m.filter)-1]
 				m.rebuildRows()
+				return m, m.cursorCmd()
 			}
 		default:
 			if len(km.Runes) > 0 {
 				m.filter += string(km.Runes)
 				m.rebuildRows()
+				return m, m.cursorCmd()
 			}
 		}
 		return m, nil
@@ -117,24 +131,28 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	case "up", "k":
 		if m.cursor > 0 {
 			m.cursor--
+			return m, m.cursorCmd()
 		}
 	case "down", "j":
 		if m.cursor < len(m.rows)-1 {
 			m.cursor++
+			return m, m.cursorCmd()
 		}
 	case "home", "g":
 		m.cursor = 0
+		return m, m.cursorCmd()
 	case "end", "G":
 		m.cursor = len(m.rows) - 1
+		return m, m.cursorCmd()
 	case "enter", " ", "l":
 		if m.cursor >= 0 && m.cursor < len(m.rows) {
 			n := m.rows[m.cursor].node
 			if n.IsDir {
 				m.expanded[n.Path] = !m.expanded[n.Path]
 				m.rebuildRows()
-			} else {
-				return m, openCmd(n.Path)
+				return m, m.cursorCmd()
 			}
+			return m, openCmd(n.Path)
 		}
 	case "h":
 		if m.cursor >= 0 && m.cursor < len(m.rows) {
@@ -142,6 +160,7 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 			if n.IsDir && m.expanded[n.Path] {
 				m.expanded[n.Path] = false
 				m.rebuildRows()
+				return m, m.cursorCmd()
 			}
 		}
 	case "/":
@@ -149,6 +168,20 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 		m.filter = ""
 	}
 	return m, nil
+}
+
+// cursorCmd returns a Cmd emitting CursorMovedMsg for the currently highlighted
+// node. The app uses this to drive right-pane previews as the user moves
+// through the tree. Returns nil when the tree is empty.
+func (m Model) cursorCmd() tea.Cmd {
+	if m.cursor < 0 || m.cursor >= len(m.rows) {
+		return nil
+	}
+	n := m.rows[m.cursor].node
+	path, isDir := n.Path, n.IsDir
+	return func() tea.Msg {
+		return events.CursorMovedMsg{Path: path, IsDir: isDir}
+	}
 }
 
 func openCmd(path string) tea.Cmd {

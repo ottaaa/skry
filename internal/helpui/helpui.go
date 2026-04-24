@@ -6,8 +6,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ottaaa/peek/internal/events"
-	"github.com/ottaaa/peek/internal/modal"
+	"github.com/ottaaa/skry/internal/events"
+	"github.com/ottaaa/skry/internal/modal"
 )
 
 type Modal struct{}
@@ -23,7 +23,7 @@ func (m *Modal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 	return m, nil
 }
 
-const body = `peek key bindings
+const body = `skry key bindings
 
 Global
   q / Ctrl+Q / Ctrl+C   quit

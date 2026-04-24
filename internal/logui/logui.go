@@ -8,9 +8,9 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ottaaa/peek/internal/events"
-	"github.com/ottaaa/peek/internal/git"
-	"github.com/ottaaa/peek/internal/modal"
+	"github.com/ottaaa/skry/internal/events"
+	"github.com/ottaaa/skry/internal/git"
+	"github.com/ottaaa/skry/internal/modal"
 )
 
 // LogModal shows the straight-line history of the current branch.

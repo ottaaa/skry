@@ -3,23 +3,24 @@ package app
 import (
 	"fmt"
 	"path/filepath"
+	"sort"
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
-	"github.com/ottaaa/peek/internal/branchui"
-	"github.com/ottaaa/peek/internal/clipboard"
-	"github.com/ottaaa/peek/internal/editor"
-	"github.com/ottaaa/peek/internal/events"
-	"github.com/ottaaa/peek/internal/git"
-	"github.com/ottaaa/peek/internal/helpui"
-	"github.com/ottaaa/peek/internal/logui"
-	"github.com/ottaaa/peek/internal/modal"
-	"github.com/ottaaa/peek/internal/search"
-	"github.com/ottaaa/peek/internal/tree"
-	"github.com/ottaaa/peek/internal/worktreeui"
+	"github.com/ottaaa/skry/internal/branchui"
+	"github.com/ottaaa/skry/internal/clipboard"
+	"github.com/ottaaa/skry/internal/editor"
+	"github.com/ottaaa/skry/internal/events"
+	"github.com/ottaaa/skry/internal/git"
+	"github.com/ottaaa/skry/internal/helpui"
+	"github.com/ottaaa/skry/internal/logui"
+	"github.com/ottaaa/skry/internal/modal"
+	"github.com/ottaaa/skry/internal/search"
+	"github.com/ottaaa/skry/internal/tree"
+	"github.com/ottaaa/skry/internal/worktreeui"
 )
 
 type Focus int
@@ -223,6 +224,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.editor.SetFocused(m.focus == FocusEditor)
 		m.applySizes()
 		m.tree.SetFiles(msg.files, msg.statuses)
+		m.previewAt(m.tree.CurrentMsg())
 		return m, nil
 
 	case statusRefreshedMsg:
@@ -234,6 +236,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case events.OpenFileMsg:
 		return m.handleOpenFile(msg)
+
+	case events.CursorMovedMsg:
+		m.previewAt(msg)
+		return m, nil
 
 	case events.CloseModalMsg:
 		m.modal = nil
@@ -461,6 +467,50 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 	return m, nil
+}
+
+func (m *Model) previewAt(msg events.CursorMovedMsg) {
+	if msg.Path == "" {
+		return
+	}
+	if msg.IsDir {
+		entries := m.folderEntries(msg.Path)
+		m.editor.OpenFolderPreview(msg.Path, entries, m.statuses)
+		return
+	}
+	m.editor.Open(msg.Path, m.statuses[msg.Path])
+}
+
+// folderEntries returns the immediate children of dirPath in the current file
+// list. Directories are suffixed with "/".
+func (m Model) folderEntries(dirPath string) []string {
+	prefix := dirPath + "/"
+	seen := map[string]bool{}
+	var res []string
+	for _, f := range m.files {
+		if !strings.HasPrefix(f, prefix) {
+			continue
+		}
+		rest := f[len(prefix):]
+		if idx := strings.IndexByte(rest, '/'); idx >= 0 {
+			name := rest[:idx] + "/"
+			if !seen[name] {
+				seen[name] = true
+				res = append(res, name)
+			}
+		} else {
+			res = append(res, rest)
+		}
+	}
+	sort.Slice(res, func(i, j int) bool {
+		di := strings.HasSuffix(res[i], "/")
+		dj := strings.HasSuffix(res[j], "/")
+		if di != dj {
+			return di
+		}
+		return res[i] < res[j]
+	})
+	return res
 }
 
 // currentPath prefers the editor's open file; falls back to the tree's

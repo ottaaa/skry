@@ -3,7 +3,7 @@ package tree
 import (
 	"testing"
 
-	"github.com/ottaaa/peek/internal/git"
+	"github.com/ottaaa/skry/internal/git"
 )
 
 func TestSetFilesBuildsTree(t *testing.T) {

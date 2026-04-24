@@ -9,7 +9,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 
-	"github.com/ottaaa/peek/internal/git"
+	"github.com/ottaaa/skry/internal/git"
 )
 
 type Mode int
@@ -21,6 +21,7 @@ const (
 	ModeEdit
 	ModeCommitDiff
 	ModeBlame
+	ModeFolder
 )
 
 type Model struct {
@@ -45,6 +46,10 @@ type Model struct {
 	// ModeBlame state
 	blameLines []git.BlameLine
 	blameTop   int
+
+	// ModeFolder state
+	folderEntries []folderEntry
+	folderTop     int
 
 	loadErr string
 	focused bool
@@ -125,6 +130,51 @@ func (m *Model) OpenCommitDiff(sha, short, subject, path string) {
 	m.diffRows = AlignLines(baseContent, newContent)
 	m.diffTop = 0
 	m.mode = ModeCommitDiff
+}
+
+type folderEntry struct {
+	Name   string
+	IsDir  bool
+	Status git.Status
+}
+
+// OpenFolderPreview switches the editor to a folder listing view. Used by the
+// tree to preview the node currently under the cursor.
+func (m *Model) OpenFolderPreview(path string, entries []string, statuses map[string]git.Status) {
+	m.path = path
+	m.status = ""
+	m.commitSha = ""
+	m.loadErr = ""
+	m.message = ""
+	prefix := ""
+	if path != "" {
+		prefix = path + "/"
+	}
+	list := make([]folderEntry, 0, len(entries))
+	for _, e := range entries {
+		isDir := strings.HasSuffix(e, "/")
+		name := strings.TrimSuffix(e, "/")
+		child := prefix + name
+		var st git.Status
+		if isDir {
+			st = statuses[child+"/"]
+			if st == "" {
+				// compute from children: any status under this dir bubbles up
+				for p, s := range statuses {
+					if strings.HasPrefix(p, child+"/") {
+						st = s
+						break
+					}
+				}
+			}
+		} else {
+			st = statuses[child]
+		}
+		list = append(list, folderEntry{Name: e, IsDir: isDir, Status: st})
+	}
+	m.folderEntries = list
+	m.folderTop = 0
+	m.mode = ModeFolder
 }
 
 // ToggleBlame swaps the current ModeView (or ModeSplit) with ModeBlame. Errors
@@ -377,6 +427,8 @@ func (m Model) View() string {
 		body = m.edit.View()
 	case ModeBlame:
 		body = RenderBlame(m.blameLines, m.blameTop, bodyH, m.width)
+	case ModeFolder:
+		body = renderFolder(m.folderEntries, m.folderTop, bodyH, m.width)
 	}
 	status := m.renderStatus()
 	return header + "\n" + body + "\n" + status
@@ -406,6 +458,8 @@ func (m Model) renderHeader() string {
 		modeTag = "[Blame]"
 	case ModeCommitDiff:
 		modeTag = "[Commit " + m.commitShort + "]"
+	case ModeFolder:
+		modeTag = "[Folder]"
 	}
 	statusTag := ""
 	if m.status != "" {

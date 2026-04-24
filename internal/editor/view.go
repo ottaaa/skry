@@ -50,7 +50,8 @@ func (v *viewMode) rebuild() {
 	if numW < 3 {
 		numW = 3
 	}
-	maxLine := v.vp.Width - numW - 1
+	// Reserve 1 column for the scrollbar on the right.
+	maxLine := v.vp.Width - numW - 2
 	if maxLine < 8 {
 		maxLine = 8
 	}
@@ -179,13 +180,26 @@ func (v viewMode) MatchInfo() (int, int) {
 	return v.matchIdx + 1, len(v.matches)
 }
 
-func (v *viewMode) ScrollDown()     { v.vp.ScrollDown(1) }
-func (v *viewMode) ScrollUp()       { v.vp.ScrollUp(1) }
-func (v *viewMode) PageDown()       { v.vp.HalfPageDown() }
-func (v *viewMode) PageUp()         { v.vp.HalfPageUp() }
-func (v *viewMode) Top()            { v.vp.GotoTop() }
-func (v *viewMode) Bottom()         { v.vp.GotoBottom() }
-func (v viewMode) Render() string   { return v.vp.View() }
+func (v *viewMode) ScrollDown() { v.vp.ScrollDown(1) }
+func (v *viewMode) ScrollUp()   { v.vp.ScrollUp(1) }
+func (v *viewMode) PageDown()   { v.vp.HalfPageDown() }
+func (v *viewMode) PageUp()     { v.vp.HalfPageUp() }
+func (v *viewMode) Top()        { v.vp.GotoTop() }
+func (v *viewMode) Bottom()     { v.vp.GotoBottom() }
+
+func (v viewMode) Render() string {
+	out := v.vp.View()
+	lines := strings.Split(out, "\n")
+	bars := scrollbarChars(v.vp.YOffset, v.vp.Height, v.vp.TotalLineCount())
+	contentW := v.vp.Width - 1
+	for i := range lines {
+		lines[i] = fitANSI(lines[i], contentW)
+		if i < len(bars) {
+			lines[i] += bars[i]
+		}
+	}
+	return strings.Join(lines, "\n")
+}
 
 func padNum(n, w int) string {
 	s := intToString(n)

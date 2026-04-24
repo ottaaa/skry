@@ -1,4 +1,4 @@
-# peek — 実装ロードマップ
+# skry — 実装ロードマップ
 
 `requirements.md` / `design.md` をもとにした段階的実装計画。
 
@@ -12,14 +12,14 @@
 
 ### M1: プロジェクト骨格 【小】 ✅
 
-- [x] `go mod init github.com/ottaaa/peek`
-- [x] `cmd/peek/main.go` に Bubble Tea の hello world
+- [x] `go mod init github.com/ottaaa/skry`
+- [x] `cmd/skry/main.go` に Bubble Tea の hello world
 - [x] 依存追加: bubbletea, lipgloss, bubbles
 - [x] CLI 引数（起動時のリポジトリパス、`--version`）
 - [x] `Ctrl+Q` / `q` で終了できることを確認
 - [x] `make run` / `make build` を Makefile で用意
 
-**完了条件**: `peek .` で空の Bubble Tea 画面が開き、`Ctrl+Q` で終了できる。
+**完了条件**: `skry .` で空の Bubble Tea 画面が開き、`Ctrl+Q` で終了できる。
 
 ---
 
@@ -113,14 +113,18 @@
 
 ---
 
-### M10: 配布整備（OSS 公開する場合のみ） 【小】
+### M10: 配布整備（最小） 【小】 ✅
 
-- [ ] README 充実（スクリーンショット、インストール方法、使い方）
-- [ ] ライセンス（MIT 想定）
-- [ ] GoReleaser で release workflow
-- [ ] Homebrew tap
+2026-04 にスコープ縮小: OSS 公開方針は「自分の Mac で使う + CI のみ」に限定し、
+Homebrew tap / GoReleaser は見送り。
 
-**完了条件**: `brew install ottaaa/peek/peek` で入れられる。
+- [x] README 書き直し（用途・使い方・キー・インストール。スクリーンショットは省略）
+- [x] MIT LICENSE 追加
+- [x] `peek` → `skry` リネーム（衝突回避）
+- [x] `.github/workflows/ci.yml` で push / PR 時に `go vet` + `go test -race`
+- [ ] GoReleaser / Homebrew tap — 将来 OSS 公開時に対応
+
+**完了条件**: `make build` で `bin/skry` が出る、GitHub Actions で CI が green。
 
 ---
 
@@ -139,7 +143,7 @@
 
 ## 未スコープ（将来 backlog）
 
-- キーマップ設定ファイル（`~/.config/peek/keymap.toml`）
+- キーマップ設定ファイル（`~/.config/skry/keymap.toml`）
 - テーマ設定（ライト/ダーク等）
 - word-level diff
 - ファイル監視（fsnotify）による自動再読込

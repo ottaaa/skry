@@ -1,35 +1,94 @@
-# peek
+# skry
 
-軽量な Git 差分ビューア / 読み取り専用エディタ（TUI）。
-**AI エージェントが書いたコードを worktree を跨ぎつつ素早く確認する**ための自作ツール。
+A lightweight TUI Git viewer / lightweight editor built with Go and
+[Bubble Tea](https://github.com/charmbracelet/bubbletea). Designed for quickly
+reviewing AI-generated code across multiple worktrees.
 
-> Status: **design phase** — コード未着手。詳細は [`docs/`](./docs/) 参照。
+## What it does
 
-## 想定する使い方
+- **File tree** on the left with `M/A/D/R/?` markers (status bubbles up to
+  parent dirs). Fuzzy-filter with `/`, flat-list of changed files with `t`.
+- **Right pane** adapts to the cursor:
+  - File with changes → **SplitDiff** (HEAD vs working tree, aligned with
+    `go-diff`)
+  - Unchanged file → **View** (chroma syntax highlight)
+  - Folder → listing of immediate children with status markers
+  - Toggle View ↔ SplitDiff with `d`
+- **Edit in place** (`i` / `e` to enter, `Ctrl+S` to save). Syntax highlighting
+  stays on during editing. `Esc` returns to View; `Esc` again returns focus to
+  the tree.
+- **Search**
+  - `p` — file name fuzzy search (`sahilm/fuzzy`)
+  - `r` — recent files (session-local)
+  - `F` — project grep (ripgrep when available, Go fallback otherwise).
+    Incremental with 180 ms debounce.
+  - `/` — find inside the current file, `n` / `N` navigate matches
+- **Git**
+  - `L` — commit history for the current branch. Pick a commit → file list →
+    SplitDiff (parent vs commit) for any file
+  - `B` — `git blame` the current file in the right pane
+  - `b` — switch branches. Asks for confirmation (`--discard-changes`) when
+    the working tree is dirty
+  - `w` — switch between `git worktree`s
+- **Misc**
+  - `y` — copy current file path to clipboard
+  - `[` / `]` — resize the left pane (`<` / `>` / `Alt+h` / `Alt+l` also work)
+  - `Tab` / `←` / `→` — move focus between tree and right pane
+  - `?` — help with all key bindings
 
-```bash
-peek                    # カレントリポジトリを開く
-peek /path/to/repo      # 指定リポジトリを開く
+skry intentionally doesn't do destructive git operations (commit/push/pull,
+rebase, stash, branch create/delete, etc.) — that's left to your AI agent or
+regular git CLI. See [`docs/requirements.md`](./docs/requirements.md) for the
+full non-goals list.
+
+## Install
+
+Requires Go ≥ 1.22.
+
+```sh
+go install github.com/ottaaa/skry/cmd/skry@latest
 ```
 
-起動すると左にファイルツリー、右に split diff / コードビュー。
-`Ctrl+W` で worktree 切替、`Ctrl+P` でファイル名検索、`Ctrl+Shift+F` で全文 grep。
+Or from source:
 
-## 技術スタック
+```sh
+git clone https://github.com/ottaaa/skry.git
+cd skry
+make build         # produces bin/skry
+```
 
-- Go
-- [Bubble Tea](https://github.com/charmbracelet/bubbletea) + [Lip Gloss](https://github.com/charmbracelet/lipgloss) + [Bubbles](https://github.com/charmbracelet/bubbles)
-- [chroma](https://github.com/alecthomas/chroma) — シンタックスハイライト
-- [go-diff](https://github.com/sergi/go-diff) — split diff アラインメント
-- git CLI を `os/exec` で呼び出し
+`ripgrep` is optional; if present, project grep uses it.
 
-## ドキュメント
+## Usage
 
-- [`docs/requirements.md`](./docs/requirements.md) — 要件（ヒアリング結果）
-- [`docs/design.md`](./docs/design.md) — 技術設計
-- [`docs/roadmap.md`](./docs/roadmap.md) — マイルストーン
-- [`CLAUDE.md`](./CLAUDE.md) — Claude Code 向けプロジェクト指示
+```sh
+skry                 # open current repository
+skry /path/to/repo   # open a specific repository
+skry --version
+```
+
+`skry` needs a git repository — it reads via `git` CLI under the hood. Press
+`?` once inside for the full keymap.
+
+## Development
+
+```sh
+make run ARGS=.     # run against the current directory
+make test
+make vet
+```
+
+Tests live next to the code (`internal/.../foo_test.go`). Logic layers (git
+parsing, diff alignment, search helpers) have unit tests; UI is verified by
+eye.
+
+## Docs
+
+- [`docs/requirements.md`](./docs/requirements.md) — requirements & non-goals
+- [`docs/design.md`](./docs/design.md) — architecture & key bindings table
+- [`docs/roadmap.md`](./docs/roadmap.md) — milestones M1–M11
+- [`CLAUDE.md`](./CLAUDE.md) — notes for working with Claude Code on this repo
 
 ## License
 
-TBD（自分専用で始めるが、将来 MIT で公開する可能性あり）
+MIT — see [`LICENSE`](./LICENSE).

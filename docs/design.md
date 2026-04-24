@@ -1,4 +1,4 @@
-# peek — 技術設計
+# skry — 技術設計
 
 `requirements.md` を満たすための設計。**実装の一次ソース**。
 
@@ -54,9 +54,9 @@
 
 ターミナル制約のため **Ctrl ベース**で実装。IntelliJ ユーザは `⌘` を `Ctrl` に読み替え。
 
-peek のグローバルショートカットは **編集中を除き Ctrl を使わない**。`Ctrl+Q` / `Ctrl+C`（終了）と、Edit モード内の `Ctrl+S` / `Ctrl+A` / `Ctrl+E` のみ Ctrl を使う。macOS の `Ctrl+←/→` が Space 切替に取られるため、ペイン幅変更は `[` / `]` を採用。
+skry のグローバルショートカットは **編集中を除き Ctrl を使わない**。`Ctrl+Q` / `Ctrl+C`（終了）と、Edit モード内の `Ctrl+S` / `Ctrl+A` / `Ctrl+E` のみ Ctrl を使う。macOS の `Ctrl+←/→` が Space 切替に取られるため、ペイン幅変更は `[` / `]` を採用。
 
-| 機能 | peek | 備考 |
+| 機能 | skry | 備考 |
 |---|---|---|
 | 終了 | `Ctrl+Q` / `Ctrl+C` / `q` | `q` は文字入力中は無効 |
 | ペイン切替 | `Tab` | |
@@ -82,13 +82,13 @@ peek のグローバルショートカットは **編集中を除き Ctrl を使
 | ブランチ切替 | `b` | dirty なら `y/N` で --discard-changes 確認 |
 | Blame | `B` | 右ペインを Blame 表示にトグル |
 
-**設定ファイル**: MVP 後に `~/.config/peek/keymap.toml` で上書き可能にする。
+**設定ファイル**: MVP 後に `~/.config/skry/keymap.toml` で上書き可能にする。
 
 ## 4. モジュール構成
 
 ```
-peek/
-├── cmd/peek/main.go              # エントリポイント
+skry/
+├── cmd/skry/main.go              # エントリポイント
 ├── internal/
 │   ├── app/                      # Bubble Tea Model / Update / View
 │   │   ├── app.go                # トップレベルの Model

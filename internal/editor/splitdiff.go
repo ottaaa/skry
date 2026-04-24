@@ -101,44 +101,50 @@ func min(a, b int) int {
 }
 
 // RenderSplit renders rows into a string of width `width`, paginated by top.
+// The rightmost column is reserved for a scrollbar.
 func RenderSplit(rows []DiffRow, top, visible, width int) string {
-	if width < 20 {
-		width = 20
+	if width < 22 {
+		width = 22
 	}
+	contentW := width - 1
 	numW := 4
-	// width = numW + " " + lineW + sep + numW + " " + lineW
-	perSide := (width - 2*numW - 3) / 2
+	perSide := (contentW - 2*numW - 3) / 2
 	if perSide < 4 {
 		perSide = 4
 	}
-	var b strings.Builder
-	end := top + visible
-	if end > len(rows) {
-		end = len(rows)
-	}
+	bars := scrollbarChars(top, visible, len(rows))
 	delBg := lipgloss.NewStyle().Background(lipgloss.Color("#3a1f26"))
 	addBg := lipgloss.NewStyle().Background(lipgloss.Color("#1f3a2a"))
 	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3b4261"))
-	for i := top; i < end; i++ {
-		r := rows[i]
-		leftNum, rightNum := fmtNum(r.LeftNum, numW), fmtNum(r.RightNum, numW)
-		leftInner := fitANSI(r.Left, perSide)
-		rightInner := fitANSI(r.Right, perSide)
-		leftLine := leftNum + " " + leftInner
-		rightLine := rightNum + " " + rightInner
-		switch r.Op {
-		case DiffDel:
-			leftLine = delBg.Render(leftLine)
-		case DiffAdd:
-			rightLine = addBg.Render(rightLine)
-		case DiffChange:
-			leftLine = delBg.Render(leftLine)
-			rightLine = addBg.Render(rightLine)
+	var b strings.Builder
+	for i := 0; i < visible; i++ {
+		idx := top + i
+		var content string
+		if idx < len(rows) {
+			r := rows[idx]
+			leftNum, rightNum := fmtNum(r.LeftNum, numW), fmtNum(r.RightNum, numW)
+			leftInner := fitANSI(r.Left, perSide)
+			rightInner := fitANSI(r.Right, perSide)
+			leftLine := leftNum + " " + leftInner
+			rightLine := rightNum + " " + rightInner
+			switch r.Op {
+			case DiffDel:
+				leftLine = delBg.Render(leftLine)
+			case DiffAdd:
+				rightLine = addBg.Render(rightLine)
+			case DiffChange:
+				leftLine = delBg.Render(leftLine)
+				rightLine = addBg.Render(rightLine)
+			}
+			content = leftLine + sepStyle.Render("│") + rightLine
+		} else {
+			content = fitANSI("", contentW)
 		}
-		b.WriteString(leftLine)
-		b.WriteString(sepStyle.Render("│"))
-		b.WriteString(rightLine)
-		if i < end-1 {
+		b.WriteString(content)
+		if i < len(bars) {
+			b.WriteString(bars[i])
+		}
+		if i < visible-1 {
 			b.WriteByte('\n')
 		}
 	}
