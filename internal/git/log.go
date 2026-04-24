@@ -85,13 +85,22 @@ func CommitFiles(dir, sha string) ([]string, error) {
 // FileAt returns the contents of a file at a given revision. Returns empty
 // string (no error) if the path does not exist at that revision.
 func FileAt(dir, rev, path string) (string, error) {
-	out, err := run(context.Background(), dir, "show", rev+":"+path)
+	b, err := FileAtBytes(dir, rev, path)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+// FileAtBytes is the raw-bytes variant of FileAt.
+func FileAtBytes(dir, rev, path string) ([]byte, error) {
+	out, err := runBytes(context.Background(), dir, "show", rev+":"+path)
 	if err != nil {
 		msg := err.Error()
 		if strings.Contains(msg, "does not exist") || strings.Contains(msg, "exists on disk, but not in") || strings.Contains(msg, "unknown revision") {
-			return "", nil
+			return nil, nil
 		}
-		return "", err
+		return nil, err
 	}
 	return out, nil
 }

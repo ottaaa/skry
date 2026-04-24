@@ -555,7 +555,7 @@ func (m *Model) applySizes() {
 		bodyH = 3
 	}
 	if m.treeOuter == 0 {
-		m.treeOuter = m.width / 3
+		m.treeOuter = m.width / 4
 	}
 	m.treeOuter = clampTreeOuter(m.treeOuter, m.width)
 	editorOuter := m.width - m.treeOuter
@@ -639,7 +639,7 @@ func (m Model) renderFooter() string {
 func (m Model) renderBody() string {
 	treeOuterW := m.treeOuter
 	if treeOuterW == 0 {
-		treeOuterW = m.width / 3
+		treeOuterW = m.width / 4
 	}
 	treeOuterW = clampTreeOuter(treeOuterW, m.width)
 	editorOuterW := m.width - treeOuterW

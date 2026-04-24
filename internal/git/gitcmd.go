@@ -9,15 +9,23 @@ import (
 )
 
 func run(ctx context.Context, dir string, args ...string) (string, error) {
+	b, err := runBytes(ctx, dir, args...)
+	if err != nil {
+		return "", err
+	}
+	return string(b), nil
+}
+
+func runBytes(ctx context.Context, dir string, args ...string) ([]byte, error) {
 	cmd := exec.CommandContext(ctx, "git", args...)
 	cmd.Dir = dir
 	var out, errb bytes.Buffer
 	cmd.Stdout = &out
 	cmd.Stderr = &errb
 	if err := cmd.Run(); err != nil {
-		return "", fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
+		return nil, fmt.Errorf("git %s: %w: %s", strings.Join(args, " "), err, strings.TrimSpace(errb.String()))
 	}
-	return out.String(), nil
+	return out.Bytes(), nil
 }
 
 func TopLevel(dir string) (string, error) {

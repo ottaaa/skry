@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"bytes"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -22,6 +23,7 @@ const (
 	ModeCommitDiff
 	ModeBlame
 	ModeFolder
+	ModeBinary
 )
 
 type Model struct {
@@ -50,6 +52,9 @@ type Model struct {
 	// ModeFolder state
 	folderEntries []folderEntry
 	folderTop     int
+
+	// ModeBinary state
+	binarySize int64
 
 	loadErr string
 	focused bool
@@ -94,20 +99,40 @@ func (m *Model) Open(path string, status git.Status) error {
 	m.loadErr = ""
 	m.commitSha = ""
 
-	content, err := readWorking(m.absPath)
+	raw, err := readWorkingBytes(m.absPath)
 	if err != nil {
 		m.mode = ModeEmpty
 		m.loadErr = err.Error()
 		return err
 	}
+	if isBinary(raw) {
+		m.binarySize = int64(len(raw))
+		m.mode = ModeBinary
+		return nil
+	}
+	content := string(raw)
 	m.view.Load(path, content)
-	if isChanged(status) {
+	if isChanged(status) && !isNewFile(status) {
+		// If HEAD side is binary (e.g. an image being replaced by text), skip
+		// SplitDiff — AlignLines would produce garbage.
+		headRaw, _ := git.HeadFileBytes(m.repoRoot, path)
+		if isBinary(headRaw) {
+			m.binarySize = int64(len(headRaw))
+			m.mode = ModeBinary
+			return nil
+		}
 		m.loadSplit(path, content)
 		m.mode = ModeSplit
 	} else {
 		m.mode = ModeView
 	}
 	return nil
+}
+
+// isNewFile reports whether the status represents a file that exists only in
+// the working tree (no HEAD version), so SplitDiff has no useful base side.
+func isNewFile(s git.Status) bool {
+	return s == git.StatusAdded || s == git.StatusUntracked
 }
 
 // OpenCommitDiff renders the parent-vs-commit diff for a single file. If the
@@ -122,12 +147,17 @@ func (m *Model) OpenCommitDiff(sha, short, subject, path string) {
 	m.message = ""
 	m.loadErr = ""
 	parent, _ := git.ParentOf(m.repoRoot, sha)
-	newContent, _ := git.FileAt(m.repoRoot, sha, path)
-	baseContent := ""
+	newRaw, _ := git.FileAtBytes(m.repoRoot, sha, path)
+	var baseRaw []byte
 	if parent != "" {
-		baseContent, _ = git.FileAt(m.repoRoot, parent, path)
+		baseRaw, _ = git.FileAtBytes(m.repoRoot, parent, path)
 	}
-	m.diffRows = AlignLines(baseContent, newContent)
+	if isBinary(newRaw) || isBinary(baseRaw) {
+		m.binarySize = int64(len(newRaw))
+		m.mode = ModeBinary
+		return
+	}
+	m.diffRows = AlignLines(string(baseRaw), string(newRaw))
 	m.diffTop = 0
 	m.mode = ModeCommitDiff
 }
@@ -203,14 +233,32 @@ func (m *Model) ToggleBlame() {
 }
 
 func readWorking(absPath string) (string, error) {
-	b, err := os.ReadFile(absPath)
+	b, err := readWorkingBytes(absPath)
 	if err != nil {
-		if os.IsNotExist(err) {
-			return "", nil
-		}
 		return "", err
 	}
 	return string(b), nil
+}
+
+func readWorkingBytes(absPath string) ([]byte, error) {
+	b, err := os.ReadFile(absPath)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	return b, nil
+}
+
+// isBinary uses the same heuristic git does: a NUL byte in the first 8000
+// bytes means the file is treated as binary.
+func isBinary(b []byte) bool {
+	n := len(b)
+	if n > 8000 {
+		n = 8000
+	}
+	return bytes.IndexByte(b[:n], 0) >= 0
 }
 
 func (m *Model) loadSplit(relPath, working string) {
@@ -283,8 +331,8 @@ func (m Model) handleKey(km tea.KeyMsg) (Model, tea.Cmd) {
 			m.mode = ModeSplit
 		}
 	case "B":
-		// Blame only works for working-tree files, not commit-diff views.
-		if m.mode != ModeCommitDiff {
+		// Blame only works for working-tree files, not commit-diff or binary.
+		if m.mode != ModeCommitDiff && m.mode != ModeBinary {
 			m.ToggleBlame()
 		}
 	case "/":
@@ -429,9 +477,34 @@ func (m Model) View() string {
 		body = RenderBlame(m.blameLines, m.blameTop, bodyH, m.width)
 	case ModeFolder:
 		body = renderFolder(m.folderEntries, m.folderTop, bodyH, m.width)
+	case ModeBinary:
+		body = renderBinary(m.binarySize, m.width, bodyH)
 	}
 	status := m.renderStatus()
 	return header + "\n" + body + "\n" + status
+}
+
+func renderBinary(size int64, w, h int) string {
+	msg := fmt.Sprintf("Binary file — not shown (%s)", humanSize(size))
+	style := lipgloss.NewStyle().Faint(true)
+	pad := h / 2
+	if pad < 0 {
+		pad = 0
+	}
+	return strings.Repeat("\n", pad) + style.Render(msg)
+}
+
+func humanSize(n int64) string {
+	const unit = 1024
+	if n < unit {
+		return fmt.Sprintf("%d B", n)
+	}
+	div, exp := int64(unit), 0
+	for v := n / unit; v >= unit; v /= unit {
+		div *= unit
+		exp++
+	}
+	return fmt.Sprintf("%.1f %cB", float64(n)/float64(div), "KMGTPE"[exp])
 }
 
 func (m Model) renderHeader() string {
@@ -460,6 +533,8 @@ func (m Model) renderHeader() string {
 		modeTag = "[Commit " + m.commitShort + "]"
 	case ModeFolder:
 		modeTag = "[Folder]"
+	case ModeBinary:
+		modeTag = "[Binary]"
 	}
 	statusTag := ""
 	if m.status != "" {
