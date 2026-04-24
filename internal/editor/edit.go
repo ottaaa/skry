@@ -29,6 +29,70 @@ type editMode struct {
 
 	cache      []string
 	cacheValid bool
+
+	undo []snapshot
+	redo []snapshot
+}
+
+// snapshot captures enough buffer state to restore after an edit. Lines are
+// deep-copied so later mutations can't corrupt the snapshot.
+type snapshot struct {
+	lines [][]rune
+	row   int
+	col   int
+}
+
+// undoCap bounds the history so large edit sessions don't grow unboundedly.
+const undoCap = 200
+
+func (e *editMode) takeSnapshot() snapshot {
+	cp := make([][]rune, len(e.lines))
+	for i, l := range e.lines {
+		cp[i] = append([]rune(nil), l...)
+	}
+	return snapshot{lines: cp, row: e.row, col: e.col}
+}
+
+// pushUndo records current state before a mutating op and clears the redo
+// stack (the classic "new edit branches history" behavior).
+func (e *editMode) pushUndo() {
+	e.undo = append(e.undo, e.takeSnapshot())
+	if len(e.undo) > undoCap {
+		e.undo = e.undo[len(e.undo)-undoCap:]
+	}
+	e.redo = nil
+}
+
+func (e *editMode) restore(s snapshot) {
+	e.lines = s.lines
+	e.row = s.row
+	e.col = s.col
+	e.invalidate()
+}
+
+func (e *editMode) Undo() bool {
+	if len(e.undo) == 0 {
+		return false
+	}
+	e.redo = append(e.redo, e.takeSnapshot())
+	s := e.undo[len(e.undo)-1]
+	e.undo = e.undo[:len(e.undo)-1]
+	e.restore(s)
+	// dirty flag: on undo back to the saved state, the buffer is clean again.
+	e.dirty = e.Value() != e.saved
+	return true
+}
+
+func (e *editMode) Redo() bool {
+	if len(e.redo) == 0 {
+		return false
+	}
+	e.undo = append(e.undo, e.takeSnapshot())
+	s := e.redo[len(e.redo)-1]
+	e.redo = e.redo[:len(e.redo)-1]
+	e.restore(s)
+	e.dirty = e.Value() != e.saved
+	return true
 }
 
 func newEditMode() editMode { return editMode{lines: [][]rune{{}}} }
@@ -48,6 +112,8 @@ func (e *editMode) Load(absPath, relPath, content string) error {
 	e.dirty = false
 	e.row, e.col, e.top = 0, 0, 0
 	e.cacheValid = false
+	e.undo = nil
+	e.redo = nil
 	return nil
 }
 
@@ -151,6 +217,10 @@ func (e *editMode) handleKey(km tea.KeyMsg) {
 		e.splitLine()
 	case "tab":
 		e.insertRune('\t')
+	case "ctrl+z":
+		e.Undo()
+	case "ctrl+y":
+		e.Redo()
 	default:
 		if len(km.Runes) > 0 {
 			for _, r := range km.Runes {
@@ -173,6 +243,7 @@ func (e *editMode) clampCol() {
 }
 
 func (e *editMode) insertRune(r rune) {
+	e.pushUndo()
 	line := e.lines[e.row]
 	out := make([]rune, len(line)+1)
 	copy(out, line[:e.col])
@@ -185,11 +256,15 @@ func (e *editMode) insertRune(r rune) {
 }
 
 func (e *editMode) backspace() {
+	if e.col == 0 && e.row == 0 {
+		return
+	}
+	e.pushUndo()
 	if e.col > 0 {
 		line := e.lines[e.row]
 		e.lines[e.row] = append(line[:e.col-1], line[e.col:]...)
 		e.col--
-	} else if e.row > 0 {
+	} else {
 		prev := e.lines[e.row-1]
 		newCol := len(prev)
 		merged := append(prev, e.lines[e.row]...)
@@ -197,8 +272,6 @@ func (e *editMode) backspace() {
 		e.lines = append(e.lines[:e.row], e.lines[e.row+1:]...)
 		e.row--
 		e.col = newCol
-	} else {
-		return
 	}
 	e.invalidate()
 	e.dirty = true
@@ -206,20 +279,23 @@ func (e *editMode) backspace() {
 
 func (e *editMode) deleteForward() {
 	line := e.lines[e.row]
+	if e.col >= len(line) && e.row >= len(e.lines)-1 {
+		return
+	}
+	e.pushUndo()
 	if e.col < len(line) {
 		e.lines[e.row] = append(line[:e.col], line[e.col+1:]...)
-	} else if e.row < len(e.lines)-1 {
+	} else {
 		merged := append(line, e.lines[e.row+1]...)
 		e.lines[e.row] = merged
 		e.lines = append(e.lines[:e.row+1], e.lines[e.row+2:]...)
-	} else {
-		return
 	}
 	e.invalidate()
 	e.dirty = true
 }
 
 func (e *editMode) splitLine() {
+	e.pushUndo()
 	line := e.lines[e.row]
 	head := append([]rune{}, line[:e.col]...)
 	tail := append([]rune{}, line[e.col:]...)

@@ -61,6 +61,7 @@ Editor (View / SplitDiff / CommitDiff)
 Edit mode
   Esc                   back to View (unsaved edits discarded)
   Ctrl+S                save
+  Ctrl+Z / Ctrl+Y       undo / redo
   Ctrl+A / Ctrl+E       home / end
   Home / End            home / end
   PgUp / PgDn           page`
