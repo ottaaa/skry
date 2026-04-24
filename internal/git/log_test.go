@@ -1,6 +1,7 @@
 package git
 
 import (
+	"errors"
 	"reflect"
 	"testing"
 )
@@ -25,5 +26,27 @@ func TestParseLogOutputIgnoresBlankAndMalformed(t *testing.T) {
 	got := parseLogOutput(in)
 	if len(got) != 1 {
 		t.Fatalf("want 1 valid commit, got %d (%#v)", len(got), got)
+	}
+}
+
+func TestIsUnbornBranchErr(t *testing.T) {
+	cases := []struct {
+		name string
+		err  error
+		want bool
+	}{
+		{"nil", nil, false},
+		{"unrelated error", errors.New("boom"), false},
+		{"no commits yet (empty repo)", errors.New("git log: fatal: your current branch 'main' does not have any commits yet"), true},
+		{"bad default revision", errors.New("fatal: bad default revision 'HEAD'"), true},
+		{"unknown revision", errors.New("fatal: unknown revision 'HEAD'"), true},
+		{"partial match in embedded error", errors.New("wrapper: fatal: bad default revision 'HEAD': extra"), true},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := isUnbornBranchErr(c.err); got != c.want {
+				t.Errorf("isUnbornBranchErr(%v) = %v, want %v", c.err, got, c.want)
+			}
+		})
 	}
 }

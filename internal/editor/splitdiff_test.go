@@ -1,6 +1,9 @@
 package editor
 
-import "testing"
+import (
+	"reflect"
+	"testing"
+)
 
 func TestAlignLinesPairsAdjacentDeleteInsert(t *testing.T) {
 	left := "a\nb\nc\n"
@@ -50,5 +53,29 @@ func TestAlignLinesDeletion(t *testing.T) {
 	}
 	if rows[1].RightNum != 0 {
 		t.Errorf("deleted row should have right line number 0, got %d", rows[1].RightNum)
+	}
+}
+
+func TestSplitKeep(t *testing.T) {
+	cases := []struct {
+		name string
+		in   string
+		want []string
+	}{
+		{"empty string yields nil", "", nil},
+		{"single line without newline", "abc", []string{"abc"}},
+		{"single line with trailing newline", "abc\n", []string{"abc"}},
+		{"multiple lines trailing newline stripped", "a\nb\nc\n", []string{"a", "b", "c"}},
+		{"multiple lines no trailing newline", "a\nb\nc", []string{"a", "b", "c"}},
+		{"intentional blank line preserved", "a\n\nb\n", []string{"a", "", "b"}},
+		{"only newline yields single empty element", "\n", []string{""}},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			got := splitKeep(c.in)
+			if !reflect.DeepEqual(got, c.want) {
+				t.Errorf("splitKeep(%q) = %#v, want %#v", c.in, got, c.want)
+			}
+		})
 	}
 }
