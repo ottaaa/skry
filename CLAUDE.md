@@ -1,7 +1,7 @@
 # CLAUDE.md — skry プロジェクト
 
 このリポジトリは **skry**（Go + Bubble Tea 製の軽量 TUI 差分ビューア）の開発用です。
-旧名は `peek`。名前衝突回避のため `skry` にリネーム（モジュールパス `github.com/ottaaa/skry`）。
+モジュールパスは `github.com/ottaaa/skry`。
 
 README.md に機能概要・キーバインド・起動方法の一次ソースがあります。セッション開始時は
 まずそれを読んでください。
