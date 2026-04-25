@@ -18,3 +18,12 @@ coverage.out
 # Local config
 *.local
 .env
+
+# Dev fixtures — everything testdata/sample-repo/seed.sh generates.
+# Only seed.sh is tracked; the files it creates (including .git) are local.
+testdata/sample-repo/.git/
+testdata/sample-repo/.gitignore
+testdata/sample-repo/README.md
+testdata/sample-repo/src/
+testdata/sample-repo/docs/
+testdata/sample-repo/notes.txt
