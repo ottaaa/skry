@@ -1,0 +1,85 @@
+version: 2
+before:
+  hooks:
+    - go mod download
+    - go mod tidy
+builds:
+  - id: skry-darwin
+    main: ./cmd/skry
+    binary: skry
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/ottaaa/skry/version.Revision={{.ShortCommit}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - darwin
+    goarch:
+      - amd64
+      - arm64
+  - id: skry-linux
+    main: ./cmd/skry
+    binary: skry
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/ottaaa/skry/version.Revision={{.ShortCommit}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - linux
+    goarch:
+      - amd64
+      - arm64
+  - id: skry-windows
+    main: ./cmd/skry
+    binary: skry
+    flags:
+      - -trimpath
+    ldflags:
+      - -s -w -X github.com/ottaaa/skry/version.Revision={{.ShortCommit}}
+    env:
+      - CGO_ENABLED=0
+    goos:
+      - windows
+    goarch:
+      - amd64
+archives:
+  - id: skry-archive
+    name_template: '{{ .ProjectName }}_v{{ .Version }}_{{ .Os }}_{{ .Arch }}{{ if .Arm }}v{{ .Arm }}{{ end }}'
+    format_overrides:
+      - goos: darwin
+        formats:
+          - zip
+      - goos: windows
+        formats:
+          - zip
+    files:
+      - LICENSE
+      - README.md
+checksum:
+  name_template: 'checksums.txt'
+changelog:
+  sort: asc
+  filters:
+    exclude:
+      - '^docs:'
+      - '^test:'
+      - '^chore:'
+nfpms:
+  - id: skry-nfpms
+    file_name_template: "{{ .ProjectName }}_{{ .Version }}-1_{{ .Arch }}"
+    ids:
+      - skry-linux
+    homepage: https://github.com/ottaaa/skry
+    maintainer: ottaaa <katsuhiro.ohta@sumally.com>
+    description: "skry — a lightweight TUI git viewer / editor"
+    license: MIT
+    formats:
+      - deb
+      - rpm
+      - apk
+    bindir: /usr/bin
+release:
+  use_existing_draft: true
