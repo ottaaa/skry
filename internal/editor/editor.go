@@ -86,6 +86,48 @@ func (m Model) Path() string       { return m.path }
 func (m Model) Dirty() bool        { return m.mode == ModeEdit && m.edit.Dirty() }
 func (m Model) Searching() bool    { return m.view.Searching() }
 
+// GoToLine centers the viewport on the 1-based `line`. The interpretation
+// depends on the current mode:
+//   - ModeView: line is the line number in the file content
+//   - ModeSplit / ModeCommitDiff: line is the right-hand (working tree /
+//     commit) line number — the diff viewport scrolls to the row whose
+//     RightNum matches
+//
+// line <= 0 is a no-op. Other modes (Blame, Edit, Folder, Binary) currently
+// ignore the request.
+func (m *Model) GoToLine(line int) {
+	if line <= 0 {
+		return
+	}
+	switch m.mode {
+	case ModeView:
+		m.view.GoToLine(line)
+	case ModeSplit, ModeCommitDiff:
+		idx := findRightLineRow(m.diffRows, line)
+		if idx < 0 {
+			return
+		}
+		viewportH := max(m.height-2, 1)
+		maxTop := max(len(m.diffRows)-viewportH, 0)
+		m.diffTop = min(max(idx-viewportH/2, 0), maxTop)
+	}
+}
+
+// findRightLineRow returns the index of the first diff row whose RightNum
+// equals `line` (1-based). Returns -1 for line <= 0 or when no row matches
+// (the latter can happen if the requested line was deleted entirely).
+func findRightLineRow(rows []DiffRow, line int) int {
+	if line <= 0 {
+		return -1
+	}
+	for i, r := range rows {
+		if r.RightNum == line {
+			return i
+		}
+	}
+	return -1
+}
+
 // Open loads the given path (relative to the repo root) and picks a mode
 // based on the supplied status.
 func (m *Model) Open(path string, status git.Status) error {

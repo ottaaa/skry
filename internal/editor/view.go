@@ -165,6 +165,16 @@ func (v *viewMode) jumpToMatch(idx int) {
 	v.vp.SetYOffset(m.line - v.vp.Height/2)
 }
 
+// GoToLine scrolls the viewport so the 1-based `line` is roughly in the
+// middle. Out-of-range values are clamped. line == 0 is a no-op.
+func (v *viewMode) GoToLine(line int) {
+	if line <= 0 {
+		return
+	}
+	target := max(line-1-v.vp.Height/2, 0)
+	v.vp.SetYOffset(target)
+}
+
 func (v viewMode) Searching() bool { return v.searching }
 func (v viewMode) Query() string   { return v.query }
 func (v viewMode) MatchInfo() (int, int) {

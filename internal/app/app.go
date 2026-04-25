@@ -460,6 +460,9 @@ func (m Model) handleOpenFile(msg events.OpenFileMsg) (tea.Model, tea.Cmd) {
 		m.message = "open: " + err.Error()
 		return m, nil
 	}
+	if msg.Line > 0 {
+		m.editor.GoToLine(msg.Line)
+	}
 	m.focus = FocusEditor
 	m.tree.SetFocused(false)
 	m.editor.SetFocused(true)
