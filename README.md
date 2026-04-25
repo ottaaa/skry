@@ -1,5 +1,17 @@
 # skry
 
+[![build](https://github.com/ottaaa/skry/actions/workflows/ci.yml/badge.svg)](https://github.com/ottaaa/skry/actions/workflows/ci.yml)
+<!--
+Coverage / ratio / exec-time badges work after you create an `octocovs` repo
+under your GitHub account (see docs/OPERATIONS.md §2-a). Once it exists,
+uncomment these:
+
+![Coverage](https://raw.githubusercontent.com/ottaaa/octocovs/main/badges/ottaaa/skry/coverage.svg)
+![Code to Test Ratio](https://raw.githubusercontent.com/ottaaa/octocovs/main/badges/ottaaa/skry/ratio.svg)
+![Test Execution Time](https://raw.githubusercontent.com/ottaaa/octocovs/main/badges/ottaaa/skry/time.svg)
+-->
+
+
 A lightweight TUI Git viewer / lightweight editor built with Go and
 [Bubble Tea](https://github.com/charmbracelet/bubbletea). Designed for quickly
 reviewing AI-generated code across multiple worktrees.
