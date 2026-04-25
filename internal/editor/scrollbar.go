@@ -21,25 +21,10 @@ func scrollbarChars(top, visible, total int) []string {
 		}
 		return out
 	}
-	barH := visible * visible / total
-	if barH < 1 {
-		barH = 1
-	}
-	if barH > visible {
-		barH = visible
-	}
-	maxTop := total - visible
-	if maxTop < 1 {
-		maxTop = 1
-	}
-	barTop := top * (visible - barH) / maxTop
-	if barTop < 0 {
-		barTop = 0
-	}
-	if barTop > visible-barH {
-		barTop = visible - barH
-	}
-	for i := 0; i < visible; i++ {
+	barH := min(max(visible*visible/total, 1), visible)
+	maxTop := max(total-visible, 1)
+	barTop := min(max(top*(visible-barH)/maxTop, 0), visible-barH)
+	for i := range visible {
 		if i >= barTop && i < barTop+barH {
 			out[i] = scrollThumb
 		} else {

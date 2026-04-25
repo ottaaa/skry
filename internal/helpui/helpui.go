@@ -67,10 +67,7 @@ Edit mode
   PgUp / PgDn           page`
 
 func (m *Modal) View(width, height int) string {
-	w := width - 8
-	if w < 60 {
-		w = 60
-	}
+	w := max(width-8, 60)
 	h := height - 4
 	lines := strings.Split(body, "\n")
 	if h < len(lines)+2 {

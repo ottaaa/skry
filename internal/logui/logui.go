@@ -58,14 +58,8 @@ func (m *LogModal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 }
 
 func (m *LogModal) View(width, height int) string {
-	w := width - 8
-	if w < 60 {
-		w = 60
-	}
-	h := height - 4
-	if h < 10 {
-		h = 10
-	}
+	w := max(width-8, 60)
+	h := max(height-4, 10)
 	listH := h - 2
 	// keep cursor visible
 	if m.cursor < m.top {
@@ -78,7 +72,7 @@ func (m *LogModal) View(width, height int) string {
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).
 		Render("Commit History — " + strconv.Itoa(len(m.commits)) + " commits"))
 	b.WriteByte('\n')
-	for i := 0; i < listH; i++ {
+	for i := range listH {
 		idx := m.top + i
 		if idx >= len(m.commits) {
 			break
@@ -159,14 +153,8 @@ func (m *CommitFilesModal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 }
 
 func (m *CommitFilesModal) View(width, height int) string {
-	w := width - 8
-	if w < 60 {
-		w = 60
-	}
-	h := height - 4
-	if h < 8 {
-		h = 8
-	}
+	w := max(width-8, 60)
+	h := max(height-4, 8)
 	listH := h - 2
 	if m.cursor < m.top {
 		m.top = m.cursor
@@ -181,7 +169,7 @@ func (m *CommitFilesModal) View(width, height int) string {
 	}
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Render("Files in " + head))
 	b.WriteByte('\n')
-	for i := 0; i < listH; i++ {
+	for i := range listH {
 		idx := m.top + i
 		if idx >= len(m.files) {
 			break

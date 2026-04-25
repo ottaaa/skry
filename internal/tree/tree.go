@@ -273,10 +273,7 @@ func (m Model) View() string {
 	if m.cursor >= h {
 		start = m.cursor - h + 1
 	}
-	end := start + h
-	if end > len(m.rows) {
-		end = len(m.rows)
-	}
+	end := min(start+h, len(m.rows))
 	var b strings.Builder
 	for i := start; i < end; i++ {
 		r := m.rows[i]

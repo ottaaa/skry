@@ -88,14 +88,8 @@ func (m *FileModal) refine() {
 }
 
 func (m *FileModal) View(width, height int) string {
-	w := width - 8
-	if w < 40 {
-		w = 40
-	}
-	h := height - 6
-	if h < 8 {
-		h = 8
-	}
+	w := max(width-8, 40)
+	h := max(height-6, 8)
 	listH := h - 3
 	var b strings.Builder
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Render(m.title))
@@ -126,9 +120,3 @@ func padRight(s string, w int) string {
 	return s + strings.Repeat(" ", diff)
 }
 
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}

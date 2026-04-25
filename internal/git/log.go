@@ -46,7 +46,7 @@ func isUnbornBranchErr(err error) bool {
 
 func parseLogOutput(out string) []Commit {
 	var commits []Commit
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if line == "" {
 			continue
 		}
@@ -73,7 +73,7 @@ func CommitFiles(dir, sha string) ([]string, error) {
 		return nil, err
 	}
 	var res []string
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		l = strings.TrimSpace(l)
 		if l != "" {
 			res = append(res, l)

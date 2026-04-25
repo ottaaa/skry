@@ -341,21 +341,12 @@ func (e *editMode) View() string {
 	if !e.cacheValid {
 		e.rebuildCache()
 	}
-	h := e.height
-	if h < 1 {
-		h = 1
-	}
-	numW := digits(len(e.lines))
-	if numW < 3 {
-		numW = 3
-	}
-	maxLine := e.width - numW - 1
-	if maxLine < 8 {
-		maxLine = 8
-	}
+	h := max(e.height, 1)
+	numW := max(digits(len(e.lines)), 3)
+	maxLine := max(e.width-numW-1, 8)
 	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
 	var b strings.Builder
-	for i := 0; i < h; i++ {
+	for i := range h {
 		idx := e.top + i
 		if idx >= len(e.lines) {
 			b.WriteString(lipgloss.NewStyle().Faint(true).Render("~"))

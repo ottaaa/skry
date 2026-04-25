@@ -46,15 +46,9 @@ func (v *viewMode) SetSize(w, h int) {
 }
 
 func (v *viewMode) rebuild() {
-	numW := digits(len(v.raw))
-	if numW < 3 {
-		numW = 3
-	}
+	numW := max(digits(len(v.raw)), 3)
 	// Reserve 1 column for the scrollbar on the right.
-	maxLine := v.vp.Width - numW - 2
-	if maxLine < 8 {
-		maxLine = 8
-	}
+	maxLine := max(v.vp.Width-numW-2, 8)
 	var b strings.Builder
 	for i, ln := range v.lines {
 		if i >= len(v.raw) {

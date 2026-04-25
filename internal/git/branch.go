@@ -20,7 +20,7 @@ func Branches(dir string) ([]Branch, error) {
 
 func parseBranchesOutput(out string) []Branch {
 	var res []Branch
-	for _, line := range strings.Split(out, "\n") {
+	for line := range strings.SplitSeq(out, "\n") {
 		if line == "" {
 			continue
 		}

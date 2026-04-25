@@ -3,6 +3,7 @@ package search
 import (
 	"bufio"
 	"context"
+	"errors"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -125,14 +126,8 @@ func (m *GrepModal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 }
 
 func (m *GrepModal) View(width, height int) string {
-	w := width - 8
-	if w < 40 {
-		w = 40
-	}
-	h := height - 6
-	if h < 10 {
-		h = 10
-	}
+	w := max(width-8, 40)
+	h := max(height-6, 10)
 	listH := h - 4
 	var b strings.Builder
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Render("Find in Project"))
@@ -186,13 +181,14 @@ func runRg(root, query string) ([]GrepHit, error) {
 	cmd.Dir = root
 	out, err := cmd.Output()
 	if err != nil {
-		if ee, ok := err.(*exec.ExitError); ok && ee.ExitCode() == 1 {
-			return nil, nil // no matches
+		var ee *exec.ExitError
+		if errors.As(err, &ee) && ee.ExitCode() == 1 {
+			return nil, nil // ripgrep exit 1 = no matches
 		}
 		return nil, err
 	}
 	var hits []GrepHit
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		if line == "" {
 			continue
 		}

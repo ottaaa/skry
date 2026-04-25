@@ -23,6 +23,7 @@ func Highlight(source, filename string) []string {
 	}
 	lexer := lexers.Match(filename)
 	if lexer == nil {
+		// chroma's exported function uses the British spelling.
 		lexer = lexers.Analyse(source)
 	}
 	if lexer == nil {

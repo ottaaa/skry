@@ -23,16 +23,13 @@ func RenderBlame(lines []git.BlameLine, top, visible, width int) string {
 		return lipgloss.NewStyle().Faint(true).Render("(no blame)")
 	}
 	contentW := width - 1
-	numW := digitsOf(len(lines))
-	if numW < 3 {
-		numW = 3
-	}
+	numW := max(digitsOf(len(lines)), 3)
 	shortW := 8
 	authorW := 12
 	dateW := 10
 	bars := scrollbarChars(top, visible, len(lines))
 	var b strings.Builder
-	for i := 0; i < visible; i++ {
+	for i := range visible {
 		idx := top + i
 		var line string
 		if idx < len(lines) {

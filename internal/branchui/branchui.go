@@ -81,21 +81,12 @@ func (m *Modal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 }
 
 func (m *Modal) View(width, height int) string {
-	w := width - 8
-	if w < 50 {
-		w = 50
-	}
+	w := max(width-8, 50)
 	extra := 3
 	if m.pendingBranch != "" {
 		extra = 5
 	}
-	h := len(m.branches) + extra
-	if h < 8 {
-		h = 8
-	}
-	if h > height-4 {
-		h = height - 4
-	}
+	h := min(max(len(m.branches)+extra, 8), height-4)
 	var b strings.Builder
 	title := "Switch Branch"
 	if m.dirty {

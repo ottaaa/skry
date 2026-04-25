@@ -1,0 +1,76 @@
+version: "2"
+run:
+  timeout: 5m
+linters:
+  enable:
+    - errorlint
+    - godot
+    - gosec
+    - misspell
+    - revive
+    - modernize
+  # funcorder (exported-before-unexported) is intentionally disabled: the
+  # existing code groups methods by concern (input → state → render) rather
+  # than visibility. Enabling it would produce a large mechanical diff with
+  # no behavioral payoff. Revisit once the codebase has stabilized and a
+  # deliberate pass can be dedicated to it.
+  settings:
+    errcheck:
+      check-type-assertions: true
+    misspell:
+      locale: US
+    revive:
+      rules:
+        - name: unexported-return
+          disabled: true
+        - name: exported
+          disabled: false
+    gosec:
+      excludes:
+        # G115 (integer overflow conversion) is noisy in TUI code where
+        # width/height are already clamped by the terminal surface. Revisit
+        # if we grow a real attack surface.
+        - G115
+        # G204 (command execution with variable args) — skry shells out to
+        # `git` everywhere; the arg vectors are constructed from trusted
+        # internal state, never raw user input.
+        - G204
+        # G304 (file inclusion via variable) — skry is a file viewer; it
+        # must open arbitrary paths by design.
+        - G304
+  exclusions:
+    generated: lax
+    presets:
+      - comments
+      - common-false-positives
+      - legacy
+      - std-error-handling
+    paths:
+      - testdata
+      - third_party$
+      - builtin$
+      - examples$
+    rules:
+      # Test files get looser treatment for exported-comment and doc-period
+      # rules; tests are their own documentation.
+      - path: _test\.go
+        linters:
+          - revive
+          - godot
+          - gosec
+          - funcorder
+      # chroma exposes a function named Analyse (British spelling). misspell
+      # otherwise has no false positives so we narrow the exclusion to the
+      # one file that calls it.
+      - path: internal/editor/highlight\.go
+        text: "Analyse"
+        linters:
+          - misspell
+formatters:
+  exclusions:
+    generated: lax
+    paths:
+      - testdata
+      - third_party$
+      - builtin$
+      - examples$

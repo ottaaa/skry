@@ -50,7 +50,7 @@ func AlignLines(left, right string) []DiffRow {
 				nextIns = splitKeep(diffs[i+1].Text)
 			}
 			pairs := min(len(lines), len(nextIns))
-			for k := 0; k < pairs; k++ {
+			for k := range pairs {
 				leftNum++
 				rightNum++
 				rows = append(rows, DiffRow{Op: DiffChange, LeftNum: leftNum, RightNum: rightNum, Left: lines[k], Right: nextIns[k]})
@@ -93,13 +93,6 @@ func splitKeep(s string) []string {
 	return parts
 }
 
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
 // RenderSplit renders rows into a string of width `width`, paginated by top.
 // The rightmost column is reserved for a scrollbar.
 func RenderSplit(rows []DiffRow, top, visible, width int) string {
@@ -108,16 +101,13 @@ func RenderSplit(rows []DiffRow, top, visible, width int) string {
 	}
 	contentW := width - 1
 	numW := 4
-	perSide := (contentW - 2*numW - 3) / 2
-	if perSide < 4 {
-		perSide = 4
-	}
+	perSide := max((contentW-2*numW-3)/2, 4)
 	bars := scrollbarChars(top, visible, len(rows))
 	delBg := lipgloss.NewStyle().Background(lipgloss.Color("#3a1f26"))
 	addBg := lipgloss.NewStyle().Background(lipgloss.Color("#1f3a2a"))
 	sepStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3b4261"))
 	var b strings.Builder
-	for i := 0; i < visible; i++ {
+	for i := range visible {
 		idx := top + i
 		var content string
 		if idx < len(rows) {

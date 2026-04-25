@@ -105,7 +105,7 @@ func TestNewEditDiscardsRedo(t *testing.T) {
 
 func TestUndoBoundsToCap(t *testing.T) {
 	e := loadTempFile(t, "")
-	for i := 0; i < undoCap+50; i++ {
+	for range undoCap + 50 {
 		e.insertRune('a')
 	}
 	if len(e.undo) != undoCap {

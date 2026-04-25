@@ -12,10 +12,7 @@ func renderFolder(entries []folderEntry, top, visible, width int) string {
 	if len(entries) == 0 {
 		return lipgloss.NewStyle().Faint(true).Render("(empty)")
 	}
-	end := top + visible
-	if end > len(entries) {
-		end = len(entries)
-	}
+	end := min(top+visible, len(entries))
 	if top < 0 {
 		top = 0
 	}

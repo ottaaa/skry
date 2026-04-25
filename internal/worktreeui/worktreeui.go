@@ -55,17 +55,8 @@ func (m *Modal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 }
 
 func (m *Modal) View(width, height int) string {
-	w := width - 8
-	if w < 50 {
-		w = 50
-	}
-	h := len(m.worktrees) + 3
-	if h < 6 {
-		h = 6
-	}
-	if h > height-6 {
-		h = height - 6
-	}
+	w := max(width-8, 50)
+	h := min(max(len(m.worktrees)+3, 6), height-6)
 	var b strings.Builder
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Render("Switch Worktree"))
 	b.WriteByte('\n')

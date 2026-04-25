@@ -46,7 +46,7 @@ func parseBlameOutput(out string) []BlameLine {
 	scanner := strings.Split(out, "\n")
 	var cur BlameLine
 	var curCommit *meta
-	for i := 0; i < len(scanner); i++ {
+	for i := range scanner {
 		line := scanner[i]
 		if line == "" {
 			continue
@@ -94,9 +94,9 @@ func isHashLine(line string) bool {
 	if line[40] != ' ' {
 		return false
 	}
-	for i := 0; i < 40; i++ {
+	for i := range 40 {
 		c := line[i]
-		if !(c >= '0' && c <= '9') && !(c >= 'a' && c <= 'f') {
+		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
 	}

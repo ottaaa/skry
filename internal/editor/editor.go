@@ -74,10 +74,7 @@ func New(repoRoot string) Model {
 
 func (m *Model) SetSize(w, h int) {
 	m.width, m.height = w, h
-	bodyH := h - 2 // header line + status line inside the editor pane
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := max(h-2, 1) // header line + status line inside the editor pane
 	m.view.SetSize(w, bodyH)
 	m.edit.SetSize(w, bodyH)
 }
@@ -254,10 +251,7 @@ func readWorkingBytes(absPath string) ([]byte, error) {
 // isBinary uses the same heuristic git does: a NUL byte in the first 8000
 // bytes means the file is treated as binary.
 func isBinary(b []byte) bool {
-	n := len(b)
-	if n > 8000 {
-		n = 8000
-	}
+	n := min(len(b), 8000)
 	return bytes.IndexByte(b[:n], 0) >= 0
 }
 
@@ -381,7 +375,7 @@ func readWorkingOrEmpty(absPath string) string {
 func (m *Model) scrollUp(n int) {
 	switch m.mode {
 	case ModeView:
-		for i := 0; i < n; i++ {
+		for range n {
 			m.view.ScrollUp()
 		}
 	case ModeSplit, ModeCommitDiff:
@@ -400,7 +394,7 @@ func (m *Model) scrollUp(n int) {
 func (m *Model) scrollDown(n int) {
 	switch m.mode {
 	case ModeView:
-		for i := 0; i < n; i++ {
+		for range n {
 			m.view.ScrollDown()
 		}
 	case ModeSplit, ModeCommitDiff:
@@ -457,10 +451,7 @@ func (m *Model) scrollBottom() {
 func (m Model) View() string {
 	header := m.renderHeader()
 	body := ""
-	bodyH := m.height - 2
-	if bodyH < 1 {
-		bodyH = 1
-	}
+	bodyH := max(m.height-2, 1)
 	switch m.mode {
 	case ModeEmpty:
 		body = lipgloss.NewStyle().Faint(true).Render("Select a file to view.")
@@ -487,10 +478,7 @@ func (m Model) View() string {
 func renderBinary(size int64, w, h int) string {
 	msg := fmt.Sprintf("Binary file — not shown (%s)", humanSize(size))
 	style := lipgloss.NewStyle().Faint(true)
-	pad := h / 2
-	if pad < 0 {
-		pad = 0
-	}
+	pad := max(h/2, 0)
 	return strings.Repeat("\n", pad) + style.Render(msg)
 }
 
