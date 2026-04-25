@@ -125,6 +125,23 @@ func (m *GrepModal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 	return m, cmd
 }
 
+// PreviewPath implements modal.Previewer.
+func (m *GrepModal) PreviewPath() string {
+	if m.cursor < 0 || m.cursor >= len(m.hits) {
+		return ""
+	}
+	return m.hits[m.cursor].Path
+}
+
+// PreviewLine returns the matched line for the highlighted hit so the
+// preview viewport can center on it.
+func (m *GrepModal) PreviewLine() int {
+	if m.cursor < 0 || m.cursor >= len(m.hits) {
+		return 0
+	}
+	return m.hits[m.cursor].Line
+}
+
 func (m *GrepModal) View(width, height int) string {
 	w := max(width-8, 40)
 	h := max(height-6, 10)

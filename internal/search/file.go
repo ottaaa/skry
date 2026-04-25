@@ -87,6 +87,19 @@ func (m *FileModal) refine() {
 	}
 }
 
+// PreviewPath implements modal.Previewer: returns the relative path of the
+// currently-highlighted result, or "" when the result list is empty.
+func (m *FileModal) PreviewPath() string {
+	if m.cursor < 0 || m.cursor >= len(m.results) {
+		return ""
+	}
+	return m.results[m.cursor].Str
+}
+
+// PreviewLine implements modal.Previewer: file-name search has no line, so
+// the preview always starts at the top.
+func (m *FileModal) PreviewLine() int { return 0 }
+
 func (m *FileModal) View(width, height int) string {
 	w := max(width-8, 40)
 	h := max(height-6, 8)

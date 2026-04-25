@@ -727,11 +727,53 @@ func (m Model) View() string {
 	body := m.renderBody()
 	footer := m.renderFooter()
 	screen := lipgloss.JoinVertical(lipgloss.Left, header, body, footer)
-	if m.modal != nil {
-		overlay := m.modal.View(m.width, m.height)
-		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay, lipgloss.WithWhitespaceChars(" "))
+	if m.modal == nil {
+		return screen
 	}
-	return screen
+	return m.renderModalOverlay()
+}
+
+// renderModalOverlay draws the active modal centered on screen. Search-style
+// modals that implement modal.Previewer also get a live file preview pane
+// at the bottom of the terminal, so the user can see what they are about to
+// open without leaving the modal.
+func (m Model) renderModalOverlay() string {
+	pv, ok := m.modal.(modal.Previewer)
+	if !ok || pv.PreviewPath() == "" {
+		overlay := m.modal.View(m.width, m.height)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay,
+			lipgloss.WithWhitespaceChars(" "))
+	}
+
+	previewH := previewPaneHeight(m.height)
+	modalH := m.height - previewH
+	if modalH < 8 {
+		// Terminal too small for a useful split; fall back to plain modal.
+		overlay := m.modal.View(m.width, m.height)
+		return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, overlay,
+			lipgloss.WithWhitespaceChars(" "))
+	}
+
+	overlay := m.modal.View(m.width, modalH)
+	modalArea := lipgloss.Place(m.width, modalH, lipgloss.Center, lipgloss.Center, overlay,
+		lipgloss.WithWhitespaceChars(" "))
+
+	relPath := pv.PreviewPath()
+	abs := filepath.Join(m.repoRoot, relPath)
+	preview := editor.PreviewFile(abs, relPath, pv.PreviewLine(), m.width, previewH-2)
+	previewBox := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder(), true, false, false, false).
+		BorderForeground(lipgloss.Color("#3b4261")).
+		Width(m.width).
+		Height(previewH - 1).
+		Render(preview)
+	return lipgloss.JoinVertical(lipgloss.Left, modalArea, previewBox)
+}
+
+// previewPaneHeight clamps the preview to roughly a third of the screen,
+// at least 8 rows (one line + headroom + border) and at most 24.
+func previewPaneHeight(total int) int {
+	return min(max(total/3, 8), 24)
 }
 
 func (m Model) renderHeader() string {
