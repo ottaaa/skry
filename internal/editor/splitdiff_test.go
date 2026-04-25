@@ -2,7 +2,10 @@ package editor
 
 import (
 	"reflect"
+	"strings"
 	"testing"
+
+	"github.com/charmbracelet/x/ansi"
 )
 
 func TestAlignLinesPairsAdjacentDeleteInsert(t *testing.T) {
@@ -77,5 +80,29 @@ func TestSplitKeep(t *testing.T) {
 				t.Errorf("splitKeep(%q) = %#v, want %#v", c.in, got, c.want)
 			}
 		})
+	}
+}
+
+// TestRenderSplitConstantRowWidth covers a scrollbar-alignment regression:
+// at odd widths the per-side integer division dropped one column on content
+// rows, so the scrollbar character drifted left between content and empty
+// trailing rows ("凸凹" appearance). Every emitted row, content or empty,
+// must have visible width == requested width.
+func TestRenderSplitConstantRowWidth(t *testing.T) {
+	rows := []DiffRow{
+		{Op: DiffEqual, LeftNum: 1, RightNum: 1, Left: "package main", Right: "package main"},
+		{Op: DiffChange, LeftNum: 2, RightNum: 2, Left: "old line", Right: "new line"},
+		{Op: DiffDel, LeftNum: 3, Left: "removed"},
+		{Op: DiffAdd, RightNum: 3, Right: "added"},
+		{Op: DiffEqual, LeftNum: 4, RightNum: 4, Left: "}", Right: "}"},
+	}
+	// Mix of even and odd widths plus a couple of small/large extremes.
+	for _, w := range []int{40, 41, 60, 61, 80, 81, 100, 101, 200, 201} {
+		out := RenderSplit(rows, 0, 8, w)
+		for i, line := range strings.Split(out, "\n") {
+			if got := ansi.StringWidth(line); got != w {
+				t.Errorf("width=%d row=%d: visible width = %d, want %d", w, i, got, w)
+			}
+		}
 	}
 }

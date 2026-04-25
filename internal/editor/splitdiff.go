@@ -95,6 +95,12 @@ func splitKeep(s string) []string {
 
 // RenderSplit renders rows into a string of width `width`, paginated by top.
 // The rightmost column is reserved for a scrollbar.
+//
+// Every emitted row is normalized to exactly `contentW = width-1` visible
+// columns before the scrollbar character is appended, so the scrollbar
+// stays in a fixed column regardless of whether the row is content or
+// empty trailing space, and regardless of width parity (the per-side
+// integer-divided width can drop a column on odd widths).
 func RenderSplit(rows []DiffRow, top, visible, width int) string {
 	if width < 22 {
 		width = 22
@@ -127,9 +133,11 @@ func RenderSplit(rows []DiffRow, top, visible, width int) string {
 				rightLine = addBg.Render(rightLine)
 			}
 			content = leftLine + sepStyle.Render("│") + rightLine
-		} else {
-			content = fitANSI("", contentW)
 		}
+		// Normalize to contentW columns. fitANSI pads with spaces (or
+		// truncates) using ansi.StringWidth so the existing background-
+		// styling escape codes are preserved.
+		content = fitANSI(content, contentW)
 		b.WriteString(content)
 		if i < len(bars) {
 			b.WriteString(bars[i])
