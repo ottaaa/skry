@@ -30,17 +30,25 @@ var skipDirs = map[string]struct{}{
 // responsive while coalescing rapid successive writes into a single refresh.
 const debounce = 250 * time.Millisecond
 
+// Logger is the narrow interface the watcher uses for background errors. It
+// matches *logfile.Logger but stays internal-free so tests can inject a fake.
+type Logger interface {
+	Log(msg string, kv ...any)
+}
+
 type Watcher struct {
 	fsw  *fsnotify.Watcher
 	out  chan struct{}
 	done chan struct{}
 	root string
+	log  Logger
 }
 
 // Start begins watching root recursively. The returned Watcher emits on
 // Events() whenever the tree has changed (debounced). Close() stops all
-// goroutines and releases OS resources.
-func Start(root string) (*Watcher, error) {
+// goroutines and releases OS resources. If log is non-nil, non-fatal errors
+// encountered during walking or delivery are recorded through it.
+func Start(root string, log Logger) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
 		return nil, err
@@ -50,11 +58,14 @@ func Start(root string) (*Watcher, error) {
 		out:  make(chan struct{}, 1),
 		done: make(chan struct{}),
 		root: root,
+		log:  log,
 	}
 	if err := addRecursive(fsw, root); err != nil {
 		// Non-fatal: the watcher may still be useful with partial coverage
-		// (e.g. some dir we couldn't stat). Log-worthy but don't abort.
-		_ = err
+		// (e.g. some dir we couldn't stat).
+		if w.log != nil {
+			w.log.Log("watcher: addRecursive failed", "root", root, "err", err.Error())
+		}
 	}
 	go w.loop()
 	return w, nil
@@ -95,9 +106,13 @@ func (w *Watcher) loop() {
 				}
 			}
 			armTimer()
-		case <-w.fsw.Errors:
-			// Drain silently; a transient ENOENT for a deleted watched path
-			// is the common case and isn't actionable.
+		case err := <-w.fsw.Errors:
+			// Transient ENOENT for a deleted watched path is the common case
+			// and isn't actionable; route to the logger so a power user can
+			// still inspect it via $XDG_STATE_HOME/skry/log/.
+			if err != nil && w.log != nil {
+				w.log.Log("watcher: fsnotify error", "err", err.Error())
+			}
 		case <-timerC:
 			timerC = nil
 			// Non-blocking send: if the previous event hasn't been consumed,

@@ -16,6 +16,7 @@ import (
 	"github.com/ottaaa/skry/internal/events"
 	"github.com/ottaaa/skry/internal/git"
 	"github.com/ottaaa/skry/internal/helpui"
+	"github.com/ottaaa/skry/internal/logfile"
 	"github.com/ottaaa/skry/internal/logui"
 	"github.com/ottaaa/skry/internal/modal"
 	"github.com/ottaaa/skry/internal/search"
@@ -53,6 +54,7 @@ type Model struct {
 	treeOuter int // current outer width of the tree pane; 0 = auto-init on first resize
 
 	watcher *watcher.Watcher
+	log     *logfile.Logger
 }
 
 // fsChangedMsg is delivered when the file system watcher coalesced one or
@@ -64,11 +66,18 @@ type fsChangedMsg struct{}
 // both close it later and start waiting for its events.
 type watcherStartedMsg struct{ w *watcher.Watcher }
 
-func startWatcher(root string) tea.Cmd {
+func startWatcher(root string, log *logfile.Logger) tea.Cmd {
 	return func() tea.Msg {
-		w, err := watcher.Start(root)
+		var lg watcher.Logger
+		if log != nil {
+			lg = log
+		}
+		w, err := watcher.Start(root, lg)
 		if err != nil {
 			// Silently degrade: auto-reload is nice-to-have, not load-bearing.
+			if log != nil {
+				log.Log("app: watcher start failed", "root", root, "err", err.Error())
+			}
 			return watcherStartedMsg{w: nil}
 		}
 		return watcherStartedMsg{w: w}
@@ -139,19 +148,24 @@ type fsReloadedMsg struct {
 type summary struct{ M, A, D, Other int }
 
 func New(repoRoot string) Model {
+	// Best-effort open: a write failure must never crash the TUI. The log is
+	// diagnostic only (watcher errors, etc.); when Open fails we just run
+	// without one.
+	lg, _ := logfile.Open(logfile.Options{})
 	m := Model{
 		repoRoot: repoRoot,
 		focus:    FocusTree,
 		tree:     tree.New(),
 		editor:   editor.New(repoRoot),
 		statuses: map[string]git.Status{},
+		log:      lg,
 	}
 	m.tree.SetFocused(true)
 	return m
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(loadRepo(m.repoRoot), startWatcher(m.repoRoot))
+	return tea.Batch(loadRepo(m.repoRoot), startWatcher(m.repoRoot, m.log))
 }
 
 type repoLoadedMsg struct {
@@ -363,7 +377,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = m.watcher.Close()
 			m.watcher = nil
 		}
-		return m, tea.Batch(loadRepo(msg.Path), startWatcher(msg.Path))
+		return m, tea.Batch(loadRepo(msg.Path), startWatcher(msg.Path, m.log))
 
 	case editor.SavedMsg:
 		return m, refreshStatus(m.repoRoot)
@@ -594,7 +608,9 @@ func (m *Model) previewAt(msg events.CursorMovedMsg) {
 		m.editor.OpenFolderPreview(msg.Path, entries, m.statuses)
 		return
 	}
-	m.editor.Open(msg.Path, m.statuses[msg.Path])
+	if err := m.editor.Open(msg.Path, m.statuses[msg.Path]); err != nil && m.log != nil {
+		m.log.Log("editor: open failed", "path", msg.Path, "err", err.Error())
+	}
 }
 
 // folderEntries returns the immediate children of dirPath in the current file
@@ -666,10 +682,7 @@ func (m *Model) applySizes() {
 	}
 	headerH := 1
 	footerH := 1
-	bodyH := m.height - headerH - footerH
-	if bodyH < 3 {
-		bodyH = 3
-	}
+	bodyH := max(m.height-headerH-footerH, 3)
 	if m.treeOuter == 0 {
 		m.treeOuter = m.width / 4
 	}

@@ -32,7 +32,7 @@ func TestStartEmitsOnWrite(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, "a.txt"), []byte("hi"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	w, err := Start(root)
+	w, err := Start(root, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -56,7 +56,7 @@ func TestStartSkipsGitDir(t *testing.T) {
 	if err := os.MkdirAll(git, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	w, err := Start(root)
+	w, err := Start(root, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
@@ -76,7 +76,7 @@ func TestStartSkipsGitDir(t *testing.T) {
 
 func TestStartDetectsNewSubdir(t *testing.T) {
 	root := t.TempDir()
-	w, err := Start(root)
+	w, err := Start(root, nil)
 	if err != nil {
 		t.Fatalf("Start: %v", err)
 	}
