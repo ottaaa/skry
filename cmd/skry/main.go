@@ -9,9 +9,8 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 
 	"github.com/ottaaa/skry/internal/app"
+	"github.com/ottaaa/skry/version"
 )
-
-var version = "dev"
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
@@ -22,7 +21,7 @@ func main() {
 	flag.Parse()
 
 	if *showVersion {
-		fmt.Println(version)
+		fmt.Println(version.String())
 		return
 	}
 
