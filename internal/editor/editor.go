@@ -669,7 +669,16 @@ func (m *Model) Reload() {
 		m.mode = ModeView
 	}
 	content := string(raw)
+	// Spurious watcher events (e.g. Cursor writing to .cursor/, build tools
+	// touching outputs) trigger a Reload even though the open file's bytes are
+	// unchanged. Reloading would re-highlight, re-run diff/blame, and most
+	// jarringly reset the scroll to the top. Bail out when nothing changed.
+	if content == m.view.source {
+		return
+	}
+	yOff := m.view.vp.YOffset
 	m.view.Load(m.path, content)
+	m.view.vp.SetYOffset(yOff)
 	if m.mode == ModeSplit {
 		m.loadSplit(m.path, content)
 	}
