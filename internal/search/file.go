@@ -12,6 +12,10 @@ import (
 	"github.com/ottaaa/skry/internal/modal"
 )
 
+type fileResultMsg struct {
+	results []fuzzy.Match
+}
+
 type FileModal struct {
 	title   string
 	input   textinput.Model
@@ -33,64 +37,72 @@ func newFileModal(title string, files []string) *FileModal {
 	ti := textinput.New()
 	ti.Placeholder = "type to filter…"
 	ti.Focus()
-	m := &FileModal{title: title, input: ti, files: files}
-	m.refine()
-	return m
+	return &FileModal{title: title, input: ti, files: files}
 }
 
-func (m *FileModal) Init() tea.Cmd { return textinput.Blink }
+func (m *FileModal) Init() tea.Cmd {
+	return tea.Batch(textinput.Blink, m.refineCmd(""))
+}
 
 func (m *FileModal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
-	km, ok := msg.(tea.KeyMsg)
-	if !ok {
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		return m, cmd
+	switch msg := msg.(type) {
+	case fileResultMsg:
+		m.results = msg.results
+		if m.cursor >= len(m.results) {
+			m.cursor = 0
+		}
+		m.top = 0
+		return m, nil
+	case tea.KeyMsg:
+		switch msg.String() {
+		case "esc":
+			return m, func() tea.Msg { return events.CloseModalMsg{} }
+		case "up":
+			if m.cursor > 0 {
+				m.cursor--
+			}
+			return m, nil
+		case "down":
+			if m.cursor < len(m.results)-1 {
+				m.cursor++
+			}
+			return m, nil
+		case "enter":
+			if len(m.results) > 0 && m.cursor < len(m.results) {
+				path := m.files[m.results[m.cursor].Index]
+				return m, func() tea.Msg { return events.OpenFileMsg{Path: path} }
+			}
+			return m, nil
+		}
 	}
-	switch km.String() {
-	case "esc":
-		return m, func() tea.Msg { return events.CloseModalMsg{} }
-	case "up":
-		if m.cursor > 0 {
-			m.cursor--
-		}
-	case "down":
-		if m.cursor < len(m.results)-1 {
-			m.cursor++
-		}
-	case "enter":
-		if len(m.results) > 0 && m.cursor < len(m.results) {
-			path := m.files[m.results[m.cursor].Index]
-			return m, func() tea.Msg { return events.OpenFileMsg{Path: path} }
-		}
-		// No match: empty query with empty file list
-	default:
-		var cmd tea.Cmd
-		m.input, cmd = m.input.Update(msg)
-		m.refine()
-		return m, cmd
+	prev := m.input.Value()
+	var cmd tea.Cmd
+	m.input, cmd = m.input.Update(msg)
+	if m.input.Value() != prev {
+		return m, tea.Batch(cmd, m.refineCmd(m.input.Value()))
 	}
-	return m, nil
+	return m, cmd
 }
 
-func (m *FileModal) refine() {
-	q := strings.TrimSpace(m.input.Value())
-	if q == "" {
-		m.results = m.results[:0]
-		for i, f := range m.files {
-			m.results = append(m.results, fuzzy.Match{Str: f, Index: i})
+// refineCmd runs fuzzy matching in a goroutine and returns the results as a
+// fileResultMsg. This keeps the Bubble Tea update loop non-blocking even on
+// large file lists.
+func (m *FileModal) refineCmd(query string) tea.Cmd {
+	files := m.files
+	q := strings.TrimSpace(query)
+	return func() tea.Msg {
+		if q == "" {
+			results := make([]fuzzy.Match, len(files))
+			for i, f := range files {
+				results[i] = fuzzy.Match{Str: f, Index: i}
+			}
+			return fileResultMsg{results: results}
 		}
-	} else {
-		m.results = fuzzy.Find(q, m.files)
+		return fileResultMsg{results: fuzzy.Find(q, files)}
 	}
-	if m.cursor >= len(m.results) {
-		m.cursor = 0
-	}
-	m.top = 0
 }
 
-// PreviewPath implements modal.Previewer: returns the relative path of the
-// currently-highlighted result, or "" when the result list is empty.
+// PreviewPath implements modal.Previewer.
 func (m *FileModal) PreviewPath() string {
 	if m.cursor < 0 || m.cursor >= len(m.results) {
 		return ""
