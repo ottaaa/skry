@@ -56,10 +56,7 @@ func PreviewFile(absPath, relPath string, line, scroll, width, height int) strin
 	numW := max(digits(total), 3)
 	contentW := max(width-numW-1, 8)
 
-	top := previewTop(line, height, total) + scroll
-	if top < 0 {
-		top = 0
-	}
+	top := max(previewTop(line, height, total)+scroll, 0)
 	if maxTop := total - height; top > maxTop {
 		top = max(maxTop, 0)
 	}

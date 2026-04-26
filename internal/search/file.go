@@ -105,10 +105,7 @@ func (m *FileModal) PreviewLine() int { return 0 }
 func (m *FileModal) View(width, height int) string {
 	w := max(width-8, 40)
 	h := max(height-6, 8)
-	listH := h - 3
-	if listH < 1 {
-		listH = 1
-	}
+	listH := max(h-3, 1)
 	if m.cursor < m.top {
 		m.top = m.cursor
 	}
