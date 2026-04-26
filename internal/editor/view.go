@@ -1,9 +1,12 @@
 package editor
 
 import (
+	"path/filepath"
 	"strings"
 
 	"github.com/charmbracelet/bubbles/viewport"
+	"github.com/charmbracelet/glamour"
+	glamourstyles "github.com/charmbracelet/glamour/styles"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 )
@@ -13,6 +16,9 @@ type viewMode struct {
 	lines    []string
 	raw      []string // unhighlighted, for search
 	filename string
+	source   string // full source kept for markdown re-render on resize
+
+	isMarkdown bool
 
 	searching bool
 	query     string
@@ -36,8 +42,14 @@ func newViewMode() viewMode {
 
 func (v *viewMode) Load(filename, content string) {
 	v.filename = filename
+	v.source = content
 	v.raw = strings.Split(content, "\n")
-	v.lines = Highlight(content, filename)
+	v.isMarkdown = isMarkdownExt(filename)
+	if v.isMarkdown {
+		v.lines = nil
+	} else {
+		v.lines = Highlight(content, filename)
+	}
 	v.searching = false
 	v.query = ""
 	v.matches = nil
@@ -46,12 +58,24 @@ func (v *viewMode) Load(filename, content string) {
 	v.vp.GotoTop()
 }
 
+func isMarkdownExt(name string) bool {
+	switch strings.ToLower(filepath.Ext(name)) {
+	case ".md", ".markdown", ".mdx":
+		return true
+	}
+	return false
+}
+
 func (v *viewMode) SetSize(w, h int) {
 	v.vp.Width, v.vp.Height = w, h
 	v.rebuild()
 }
 
 func (v *viewMode) rebuild() {
+	if v.isMarkdown {
+		v.rebuildMarkdown()
+		return
+	}
 	numW := max(digits(len(v.raw)), 3)
 	// Reserve 1 column for the scrollbar on the right.
 	maxLine := max(v.vp.Width-numW-2, 8)
@@ -87,6 +111,26 @@ func (v *viewMode) rebuild() {
 	v.vp.SetContent(out)
 }
 
+func (v *viewMode) rebuildMarkdown() {
+	if v.vp.Width == 0 {
+		return
+	}
+	r, err := glamour.NewTermRenderer(
+		glamour.WithStandardStyle(glamourstyles.TokyoNightStyle),
+		glamour.WithWordWrap(v.vp.Width-1),
+	)
+	if err != nil {
+		v.vp.SetContent(strings.Join(v.raw, "\n"))
+		return
+	}
+	out, err := r.Render(v.source)
+	if err != nil {
+		v.vp.SetContent(strings.Join(v.raw, "\n"))
+		return
+	}
+	v.vp.SetContent(strings.TrimRight(out, "\n"))
+}
+
 func highlightMatches(raw, q string) string {
 	if q == "" {
 		return raw
@@ -110,6 +154,9 @@ func highlightMatches(raw, q string) string {
 }
 
 func (v *viewMode) StartSearch() {
+	if v.isMarkdown {
+		return
+	}
 	v.searching = true
 	v.query = ""
 	v.matches = nil
