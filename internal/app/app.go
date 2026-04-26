@@ -773,7 +773,7 @@ func (m Model) currentPath() string {
 
 func (m Model) currentTreeOuter() int {
 	if m.treeOuter == 0 {
-		return m.width / 3
+		return m.width / 6
 	}
 	return m.treeOuter
 }
@@ -801,7 +801,7 @@ func (m *Model) applySizes() {
 	footerH := 1
 	bodyH := max(m.height-headerH-footerH, 3)
 	if m.treeOuter == 0 {
-		m.treeOuter = m.width / 4
+		m.treeOuter = m.width / 6
 	}
 	m.treeOuter = clampTreeOuter(m.treeOuter, m.width)
 	editorOuter := m.width - m.treeOuter
@@ -984,7 +984,7 @@ func (m Model) renderFooter() string {
 func (m Model) renderBody() string {
 	treeOuterW := m.treeOuter
 	if treeOuterW == 0 {
-		treeOuterW = m.width / 4
+		treeOuterW = m.width / 6
 	}
 	treeOuterW = clampTreeOuter(treeOuterW, m.width)
 	editorOuterW := m.width - treeOuterW
