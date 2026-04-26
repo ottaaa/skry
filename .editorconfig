@@ -1,0 +1,29 @@
+# https://editorconfig.org/
+# Single source of truth for whitespace conventions across editors so a
+# new contributor's editor doesn't fight gofmt or YAML linters.
+
+root = true
+
+[*]
+charset = utf-8
+end_of_line = lf
+insert_final_newline = true
+trim_trailing_whitespace = true
+indent_style = space
+indent_size = 2
+
+[*.go]
+indent_style = tab
+indent_size = 8
+
+[Makefile]
+indent_style = tab
+
+[*.md]
+# Trailing spaces in Markdown often denote line breaks. Don't strip.
+trim_trailing_whitespace = false
+
+[*.golden]
+# Golden files (test fixtures) must match byte-for-byte.
+insert_final_newline = false
+trim_trailing_whitespace = false
