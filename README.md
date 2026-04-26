@@ -35,6 +35,9 @@ reviewing AI-generated code across multiple worktrees.
   - `F` — project grep (ripgrep when available, Go fallback otherwise).
     Incremental with 180 ms debounce.
   - `/` — find inside the current file, `n` / `N` navigate matches
+  - While `p` / `r` / `F` is open, the file under the cursor is previewed in
+    a bottom pane. `PgUp` / `PgDn` (or `Alt+k` / `Alt+j`) scroll the preview;
+    `Alt+↑` / `Alt+↓` shrink / grow the preview pane.
 - **Git**
   - `L` — commit history for the current branch. Pick a commit → file list →
     SplitDiff (parent vs commit) for any file

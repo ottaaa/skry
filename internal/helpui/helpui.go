@@ -64,7 +64,12 @@ Edit mode
   Ctrl+Z / Ctrl+Y       undo / redo
   Ctrl+A / Ctrl+E       home / end
   Home / End            home / end
-  PgUp / PgDn           page`
+  PgUp / PgDn           page
+
+Search modals (p / r / F) preview pane
+  PgUp / PgDn           scroll preview
+  Alt+j / Alt+k         scroll preview down / up
+  Alt+↑ / Alt+↓         shrink / grow preview pane`
 
 func (m *Modal) View(width, height int) string {
 	w := max(width-8, 60)

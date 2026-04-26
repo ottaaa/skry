@@ -53,6 +53,10 @@ type Model struct {
 
 	treeOuter int // current outer width of the tree pane; 0 = auto-init on first resize
 
+	previewExtraH  int    // user delta on the modal-preview pane height (alt+up/alt+down)
+	previewScroll  int    // line-offset added to the modal-preview top (pgup/pgdn)
+	previewLastKey string // path+line key to detect cursor moves and reset scroll
+
 	watcher *watcher.Watcher
 	log     *logfile.Logger
 }
@@ -369,6 +373,8 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case events.CloseModalMsg:
 		m.modal = nil
+		m.previewScroll = 0
+		m.previewLastKey = ""
 		return m, nil
 
 	case events.SwitchWorktreeMsg:
@@ -494,8 +500,25 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 	}
 
 	if m.modal != nil {
+		if _, ok := m.modal.(modal.Previewer); ok {
+			switch s {
+			case "alt+up":
+				m.previewExtraH = clampPreviewExtra(m.previewExtraH-2, m.height)
+				return m, nil
+			case "alt+down":
+				m.previewExtraH = clampPreviewExtra(m.previewExtraH+2, m.height)
+				return m, nil
+			case "pgup", "alt+k":
+				m.previewScroll -= m.previewPageStep()
+				return m, nil
+			case "pgdown", "alt+j":
+				m.previewScroll += m.previewPageStep()
+				return m, nil
+			}
+		}
 		newModal, cmd := m.modal.Update(km)
 		m.modal = newModal
+		m.syncPreviewState()
 		return m, cmd
 	}
 
@@ -748,7 +771,7 @@ func (m Model) renderModalOverlay() string {
 			lipgloss.WithWhitespaceChars(" "))
 	}
 
-	previewH := previewPaneHeight(m.height)
+	previewH := m.previewPaneHeight()
 	modalH := m.height - previewH
 	if modalH < 8 {
 		// Terminal too small for a useful split; fall back to plain modal.
@@ -763,7 +786,7 @@ func (m Model) renderModalOverlay() string {
 
 	relPath := pv.PreviewPath()
 	abs := filepath.Join(m.repoRoot, relPath)
-	preview := editor.PreviewFile(abs, relPath, pv.PreviewLine(), m.width, previewH-2)
+	preview := editor.PreviewFile(abs, relPath, pv.PreviewLine(), m.previewScroll, m.width, previewH-2)
 	previewBox := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder(), true, false, false, false).
 		BorderForeground(lipgloss.Color("#3b4261")).
@@ -773,10 +796,63 @@ func (m Model) renderModalOverlay() string {
 	return lipgloss.JoinVertical(lipgloss.Left, modalArea, previewBox)
 }
 
-// previewPaneHeight clamps the preview to roughly a third of the screen,
-// at least 8 rows (one line + headroom + border) and at most 24.
-func previewPaneHeight(total int) int {
-	return min(max(total/3, 8), 24)
+// previewPaneHeight returns the current preview pane height, factoring in the
+// user's resize delta. Baseline is roughly half the screen so the preview is
+// genuinely useful; floor 10 / ceiling height-10 keeps the modal usable.
+func (m Model) previewPaneHeight() int {
+	base := m.height / 2
+	return clampPreviewHeight(base+m.previewExtraH, m.height)
+}
+
+func clampPreviewHeight(v, totalH int) int {
+	low := 10
+	high := max(totalH-10, low+1)
+	if v < low {
+		return low
+	}
+	if v > high {
+		return high
+	}
+	return v
+}
+
+func clampPreviewExtra(extra, totalH int) int {
+	base := totalH / 2
+	low := 10 - base
+	high := (totalH - 10) - base
+	if low > high {
+		return 0
+	}
+	if extra < low {
+		return low
+	}
+	if extra > high {
+		return high
+	}
+	return extra
+}
+
+// previewPageStep is the line delta for one PgUp/PgDn — about half the
+// preview pane so the user can keep context as they scroll.
+func (m Model) previewPageStep() int {
+	return max(m.previewPaneHeight()/2-1, 1)
+}
+
+// syncPreviewState resets the preview scroll when the modal's selection
+// changes (cursor move or new search results), so each new file always
+// starts from the centered/top position.
+func (m *Model) syncPreviewState() {
+	pv, ok := m.modal.(modal.Previewer)
+	if !ok {
+		m.previewLastKey = ""
+		m.previewScroll = 0
+		return
+	}
+	key := pv.PreviewPath() + ":" + fmt.Sprintf("%d", pv.PreviewLine())
+	if key != m.previewLastKey {
+		m.previewLastKey = key
+		m.previewScroll = 0
+	}
 }
 
 func (m Model) renderHeader() string {

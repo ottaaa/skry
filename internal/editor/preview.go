@@ -16,13 +16,14 @@ const previewMaxBytes = 1 << 20 // 1 MiB
 // PreviewFile renders a small read-only view of `absPath` into a rectangle
 // of (width, height). When line > 0 the viewport is positioned so that the
 // 1-based line is visible roughly in the middle. line == 0 starts at the
-// top.
+// top. `scroll` is added to the computed top line index and clamped to the
+// content (negative scrolls up, positive scrolls down).
 //
 // This helper is intentionally side-effect-free — no caching, no
 // goroutines. It is called once per render frame from the host app while a
 // search modal is open, so it must be cheap; that is what previewMaxBytes
 // guards.
-func PreviewFile(absPath, relPath string, line, width, height int) string {
+func PreviewFile(absPath, relPath string, line, scroll, width, height int) string {
 	if width <= 0 || height <= 0 {
 		return ""
 	}
@@ -55,7 +56,13 @@ func PreviewFile(absPath, relPath string, line, width, height int) string {
 	numW := max(digits(total), 3)
 	contentW := max(width-numW-1, 8)
 
-	top := previewTop(line, height, total)
+	top := previewTop(line, height, total) + scroll
+	if top < 0 {
+		top = 0
+	}
+	if maxTop := total - height; top > maxTop {
+		top = max(maxTop, 0)
+	}
 	hl := -1
 	if line > 0 && line <= total {
 		hl = line - 1
