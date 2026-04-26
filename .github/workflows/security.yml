@@ -1,0 +1,26 @@
+name: security
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  # govulncheck scans dependencies for known CVEs published in the Go
+  # vulnerability database. Failures here mean a dependency we use has a
+  # disclosed vuln in a code path govulncheck believes we exercise.
+  govulncheck:
+    uses: charmbracelet/meta/.github/workflows/govulncheck.yml@main
+    with:
+      go-version: stable
+
+  # semgrep with the dgryski/semgrep-go ruleset catches Go-specific
+  # patterns golangci-lint doesn't (e.g. mutex copy bugs, unbounded
+  # context.Background calls, slice aliasing footguns). Charmbracelet's
+  # reusable workflow already wires the ruleset, so we just call it.
+  semgrep:
+    uses: charmbracelet/meta/.github/workflows/semgrep.yml@main
