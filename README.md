@@ -85,10 +85,30 @@ make build         # produces bin/skry
 skry                 # open current repository
 skry /path/to/repo   # open a specific repository
 skry --version
+git diff | skry -    # pipe content as a stdin source (see below)
 ```
 
 `skry` needs a git repository — it reads via `git` CLI under the hood. Press
 `?` once inside for the full keymap.
+
+### stdin
+
+`skry -` reads stdin into a temp directory, initializes a git repo, and
+opens skry on the result. The content is saved as a single tracked file
+named after the detected type (`stdin.diff`, `stdin.json`, `stdin.xml`,
+or `stdin.txt` as a fallback). The temp directory is removed on exit.
+
+This is handy for one-off views without going to disk:
+
+```sh
+git log -p HEAD~3..HEAD | skry -
+curl -s https://example.com/foo.go | skry -
+kubectl get -o yaml deploy/foo | skry -
+```
+
+Unified diffs currently render as plain text in View mode (with
+syntax highlighting). A side-by-side renderer for diff streams is
+tracked as a follow-up.
 
 ## Development
 
