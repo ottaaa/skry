@@ -49,7 +49,12 @@ type Model struct {
 	summary  summary
 	branch   string
 	recent   []string
-	message  string
+
+	// Status bar state. setToast / toastExpiredMsg / renderToast live in
+	// toast.go; we just hold the current toast and a sequence counter
+	// here so that a fresh toast can supersede an in-flight expiry tick.
+	toast    toast
+	toastSeq int
 
 	treeOuter int // current outer width of the tree pane; 0 = auto-init on first resize
 
@@ -314,8 +319,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case repoLoadedMsg:
 		if msg.err != nil {
-			m.message = msg.err.Error()
-			return m, nil
+			return m, m.setToast(msg.err.Error(), ToastError)
 		}
 		m.repoRoot = msg.root
 		m.files = msg.files
@@ -385,6 +389,14 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		return m, tea.Batch(loadRepo(msg.Path), startWatcher(msg.Path, m.log))
 
+	case toastExpiredMsg:
+		// Stale ticks (a newer toast bumped seq) are silently ignored —
+		// the live toast has its own pending expiry.
+		if msg.seq == m.toast.seq {
+			m.toast = toast{}
+		}
+		return m, nil
+
 	case editor.SavedMsg:
 		return m, refreshStatus(m.repoRoot)
 
@@ -396,40 +408,36 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case editor.AutoSavedMsg:
-		// Show transient feedback in the footer (Q3: silent + status line).
-		// Once the dedicated status bar lands (Task #6) this will graduate
-		// to the formatted "[Auto-saved 12:34:56]" toast, but the footer
-		// re-renders on the next event so the message isn't intrusive.
+		// Q3 graduates from a quiet "m.message" to a kind-styled 3-second
+		// toast. Failures stay visible long enough to read and are also
+		// recorded in the persistent logfile for post-mortem.
 		if msg.Err != nil {
-			m.message = "auto-save failed: " + msg.Err.Error()
 			if m.log != nil {
 				m.log.Log("editor: autosave failed", "path", msg.Path, "err", msg.Err.Error())
 			}
-			return m, nil
+			return m, m.setToast("auto-save failed: "+msg.Err.Error(), ToastError)
 		}
-		m.message = "auto-saved " + msg.At.Format("15:04:05")
-		return m, refreshStatus(m.repoRoot)
+		return m, tea.Batch(
+			refreshStatus(m.repoRoot),
+			m.setToast("Auto-saved "+msg.At.Format("15:04:05"), ToastSuccess),
+		)
 
 	case logLoadedMsg:
 		if msg.err != nil {
-			m.message = "log: " + msg.err.Error()
-			return m, nil
+			return m, m.setToast("log: "+msg.err.Error(), ToastError)
 		}
 		if len(msg.commits) == 0 {
-			m.message = "no commits yet"
-			return m, nil
+			return m, m.setToast("no commits yet", ToastInfo)
 		}
 		m.modal = logui.NewLogModal(msg.commits)
 		return m, m.modal.Init()
 
 	case branchesLoadedMsg:
 		if msg.err != nil {
-			m.message = "branches: " + msg.err.Error()
-			return m, nil
+			return m, m.setToast("branches: "+msg.err.Error(), ToastError)
 		}
 		if len(msg.branches) == 0 {
-			m.message = "no branches yet"
-			return m, nil
+			return m, m.setToast("no branches yet", ToastInfo)
 		}
 		m.modal = branchui.New(msg.branches, msg.dirty)
 		return m, m.modal.Init()
@@ -437,14 +445,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case events.LogCommitSelectedMsg:
 		files, err := git.CommitFiles(m.repoRoot, msg.Sha)
 		if err != nil {
-			m.message = "commit files: " + err.Error()
 			m.modal = nil
-			return m, nil
+			return m, m.setToast("commit files: "+err.Error(), ToastError)
 		}
 		if len(files) == 0 {
-			m.message = "commit has no file changes"
 			m.modal = nil
-			return m, nil
+			return m, m.setToast("commit has no file changes", ToastInfo)
 		}
 		m.modal = logui.NewCommitFilesModal(msg.Sha, msg.Short, msg.Subject, files)
 		return m, m.modal.Init()
@@ -463,11 +469,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case branchSwitchedMsg:
 		if msg.err != nil {
-			m.message = "switch: " + msg.err.Error()
-			return m, nil
+			return m, m.setToast("switch: "+msg.err.Error(), ToastError)
 		}
-		m.message = "switched to " + msg.name
-		return m, loadRepo(m.repoRoot)
+		return m, tea.Batch(
+			loadRepo(m.repoRoot),
+			m.setToast("switched to "+msg.name, ToastSuccess),
+		)
 
 	case tea.KeyMsg:
 		return m.handleKey(msg)
@@ -485,8 +492,7 @@ func (m Model) handleOpenFile(msg events.OpenFileMsg) (tea.Model, tea.Cmd) {
 	m.modal = nil
 	status := m.statuses[msg.Path]
 	if err := m.editor.Open(msg.Path, status); err != nil {
-		m.message = "open: " + err.Error()
-		return m, nil
+		return m, m.setToast("open: "+err.Error(), ToastError)
 	}
 	if msg.Line > 0 {
 		m.editor.GoToLine(msg.Line)
@@ -585,8 +591,7 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "w":
 			wts, err := git.Worktrees(m.repoRoot)
 			if err != nil {
-				m.message = "worktree: " + err.Error()
-				return m, nil
+				return m, m.setToast("worktree: "+err.Error(), ToastError)
 			}
 			m.modal = worktreeui.New(wts, m.repoRoot)
 			return m, m.modal.Init()
@@ -604,15 +609,12 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 		case "y":
 			path := m.currentPath()
 			if path == "" {
-				m.message = "nothing to copy"
-				return m, nil
+				return m, m.setToast("nothing to copy", ToastInfo)
 			}
 			if err := clipboard.Copy(path); err != nil {
-				m.message = "copy failed: " + err.Error()
-			} else {
-				m.message = "copied: " + path
+				return m, m.setToast("copy failed: "+err.Error(), ToastError)
 			}
-			return m, nil
+			return m, m.setToast("copied: "+path, ToastSuccess)
 		case "?":
 			m.modal = helpui.New()
 			return m, m.modal.Init()
@@ -897,15 +899,19 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) renderFooter() string {
-	msg := m.message
 	hint := "q quit  Tab/←/→ pane  p file  r recent  F grep  L log  b branch  w worktree  B blame  t flat  d diff  / find  y copy  i edit  ? help"
-	if msg != "" {
-		hint = msg + "  |  " + hint
+	// While a toast is active it owns the left segment and the hint is
+	// pushed to the right (or trimmed first when space is tight). This
+	// matches the convention from glow's pager footer.
+	toastSeg := m.renderToast()
+	line := hint
+	if toastSeg != "" {
+		line = toastSeg + "  " + hint
 	}
-	if ansi.StringWidth(hint) > m.width-2 {
-		hint = ansi.Truncate(hint, m.width-2, "…")
+	if ansi.StringWidth(line) > m.width-2 {
+		line = ansi.Truncate(line, m.width-2, "…")
 	}
-	return FooterStyle.Width(m.width).Render(hint)
+	return FooterStyle.Width(m.width).Render(line)
 }
 
 func (m Model) renderBody() string {
