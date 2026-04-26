@@ -388,6 +388,28 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case editor.SavedMsg:
 		return m, refreshStatus(m.repoRoot)
 
+	case editor.AutosaveTickMsg:
+		// Forward to the editor; it owns the version-vs-current check and
+		// only triggers a write when the tick is still authoritative.
+		newEd, cmd := m.editor.Update(msg)
+		m.editor = newEd
+		return m, cmd
+
+	case editor.AutoSavedMsg:
+		// Show transient feedback in the footer (Q3: silent + status line).
+		// Once the dedicated status bar lands (Task #6) this will graduate
+		// to the formatted "[Auto-saved 12:34:56]" toast, but the footer
+		// re-renders on the next event so the message isn't intrusive.
+		if msg.Err != nil {
+			m.message = "auto-save failed: " + msg.Err.Error()
+			if m.log != nil {
+				m.log.Log("editor: autosave failed", "path", msg.Path, "err", msg.Err.Error())
+			}
+			return m, nil
+		}
+		m.message = "auto-saved " + msg.At.Format("15:04:05")
+		return m, refreshStatus(m.repoRoot)
+
 	case logLoadedMsg:
 		if msg.err != nil {
 			m.message = "log: " + msg.err.Error()

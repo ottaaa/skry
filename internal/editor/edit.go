@@ -3,10 +3,31 @@ package editor
 import (
 	"os"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
+
+// AutosaveDelay is how long the buffer must be idle (no content-changing
+// keystroke) before the editor flushes a dirty buffer to disk on its own.
+// Cursor motion does not reset the timer — only edits do.
+const AutosaveDelay = 1500 * time.Millisecond
+
+// AutosaveTickMsg is delivered after AutosaveDelay elapses. The editor
+// only acts on it when Version still matches editMode.autosaveVersion —
+// otherwise a more recent edit has superseded this tick and another tick
+// is already armed.
+type AutosaveTickMsg struct{ Version int }
+
+// AutoSavedMsg is emitted after the editor attempts an autosave. Err is
+// nil on success. The host app uses At for "Auto-saved 12:34:56" feedback
+// in the status line and Path to refresh git status markers.
+type AutoSavedMsg struct {
+	Path string
+	At   time.Time
+	Err  error
+}
 
 // editMode is a minimal line-based editor with syntax highlighting. It keeps
 // the whole buffer in memory as [][]rune and rebuilds a per-line chroma cache
@@ -26,6 +47,14 @@ type editMode struct {
 
 	saved string
 	dirty bool
+
+	// autosaveVersion is bumped on every content-changing operation. The
+	// scheduled tea.Tick captures the value at scheduling time; when the
+	// AutosaveTickMsg arrives we compare and only fire the save if the
+	// number is still the same (no further edits since). This is the
+	// classic single-counter cancellation pattern used elsewhere in skry
+	// for the grep modal debounce.
+	autosaveVersion int
 
 	cache      []string
 	cacheValid bool
@@ -80,6 +109,7 @@ func (e *editMode) Undo() bool {
 	e.restore(s)
 	// dirty flag: on undo back to the saved state, the buffer is clean again.
 	e.dirty = e.Value() != e.saved
+	e.autosaveVersion++
 	return true
 }
 
@@ -92,6 +122,7 @@ func (e *editMode) Redo() bool {
 	e.redo = e.redo[:len(e.redo)-1]
 	e.restore(s)
 	e.dirty = e.Value() != e.saved
+	e.autosaveVersion++
 	return true
 }
 
@@ -162,9 +193,28 @@ func (e *editMode) Update(msg tea.Msg) tea.Cmd {
 	if !ok {
 		return nil
 	}
+	before := e.autosaveVersion
 	e.handleKey(km)
 	e.scrollIntoView()
-	return nil
+	if e.autosaveVersion == before {
+		// Pure motion keystroke (cursor only) — nothing to save.
+		return nil
+	}
+	v := e.autosaveVersion
+	return tea.Tick(AutosaveDelay, func(time.Time) tea.Msg {
+		return AutosaveTickMsg{Version: v}
+	})
+}
+
+// FlushSave writes the buffer to disk synchronously when dirty. Used at
+// transition points (Esc, focus change, file switch) so the user never
+// loses edits made within the last AutosaveDelay window. Returns nil when
+// the buffer is clean.
+func (e *editMode) FlushSave() error {
+	if !e.dirty {
+		return nil
+	}
+	return e.Save()
 }
 
 func (e *editMode) handleKey(km tea.KeyMsg) {
@@ -252,7 +302,15 @@ func (e *editMode) insertRune(r rune) {
 	e.lines[e.row] = out
 	e.col++
 	e.invalidate()
+	e.markDirty()
+}
+
+// markDirty flips the dirty flag and bumps the autosave version. All
+// content-changing operations should call this rather than touching the
+// fields directly so the autosave debounce stays consistent.
+func (e *editMode) markDirty() {
 	e.dirty = true
+	e.autosaveVersion++
 }
 
 func (e *editMode) backspace() {
@@ -274,7 +332,7 @@ func (e *editMode) backspace() {
 		e.col = newCol
 	}
 	e.invalidate()
-	e.dirty = true
+	e.markDirty()
 }
 
 func (e *editMode) deleteForward() {
@@ -291,7 +349,7 @@ func (e *editMode) deleteForward() {
 		e.lines = append(e.lines[:e.row+1], e.lines[e.row+2:]...)
 	}
 	e.invalidate()
-	e.dirty = true
+	e.markDirty()
 }
 
 func (e *editMode) splitLine() {
@@ -308,7 +366,7 @@ func (e *editMode) splitLine() {
 	e.row++
 	e.col = 0
 	e.invalidate()
-	e.dirty = true
+	e.markDirty()
 }
 
 func (e *editMode) invalidate() { e.cacheValid = false }

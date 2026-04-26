@@ -6,6 +6,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -130,7 +131,17 @@ func findRightLineRow(rows []DiffRow, line int) int {
 
 // Open loads the given path (relative to the repo root) and picks a mode
 // based on the supplied status.
+//
+// If we are currently in Edit mode with an unsaved buffer, we flush that
+// to disk first so switching files (e.g. from a grep modal) does not drop
+// the user's in-flight edits. Save errors are intentionally swallowed —
+// surfacing them through Open's error return would conflate "couldn't
+// save the previous file" with "couldn't load the new one"; the host app
+// will still see the dirty buffer linger if the write failed.
 func (m *Model) Open(path string, status git.Status) error {
+	if m.mode == ModeEdit {
+		_ = m.edit.FlushSave()
+	}
 	m.path = path
 	m.status = status
 	m.absPath = filepath.Join(m.repoRoot, path)
@@ -315,19 +326,58 @@ func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
 		return m.handleKey(msg)
+	case AutosaveTickMsg:
+		return m.handleAutosaveTick(msg)
 	}
 	return m, nil
+}
+
+// handleAutosaveTick fires when AutosaveDelay has elapsed since the
+// scheduling keystroke. Three guards short-circuit:
+//   - the user has already left Edit mode (Esc / file switch flushed),
+//   - a more recent edit superseded this tick (a fresher tick is in flight),
+//   - the buffer is no longer dirty (a manual Ctrl+S already flushed).
+func (m Model) handleAutosaveTick(msg AutosaveTickMsg) (Model, tea.Cmd) {
+	if m.mode != ModeEdit {
+		return m, nil
+	}
+	if msg.Version != m.edit.autosaveVersion {
+		return m, nil
+	}
+	if !m.edit.dirty {
+		return m, nil
+	}
+	err := m.edit.Save()
+	path := m.path
+	return m, func() tea.Msg {
+		return AutoSavedMsg{Path: path, At: time.Now(), Err: err}
+	}
 }
 
 func (m Model) handleKey(km tea.KeyMsg) (Model, tea.Cmd) {
 	if m.mode == ModeEdit {
 		switch km.String() {
 		case "esc":
+			// Q5: leaving Edit mode flushes any pending edits. The user has
+			// chosen "Esc = commit edits" semantics — autosave already
+			// covered most of this, but a flush guarantees the file on disk
+			// matches the buffer even within the AutosaveDelay window.
+			var saveErr error
+			if m.edit.dirty {
+				saveErr = m.edit.Save()
+			}
 			m.mode = ModeView
 			content, _ := readWorking(m.absPath)
 			m.view.Load(m.path, content)
+			if saveErr != nil {
+				m.message = "save failed: " + saveErr.Error()
+				return m, nil
+			}
 			m.message = ""
-			return m, nil
+			// SavedMsg refreshes git status markers in the tree (a save can
+			// flip a file from clean to modified, or modified to clean).
+			path := m.path
+			return m, func() tea.Msg { return SavedMsg{Path: path} }
 		case "ctrl+s":
 			if err := m.edit.Save(); err != nil {
 				m.message = "save failed: " + err.Error()

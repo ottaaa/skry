@@ -58,9 +58,9 @@ Editor (View / SplitDiff / CommitDiff)
   i / e                 enter Edit mode
   Esc                   back to tree
 
-Edit mode
-  Esc                   back to View (unsaved edits discarded)
-  Ctrl+S                save
+Edit mode (autosaves 1.5s after each edit)
+  Esc                   commit & back to View
+  Ctrl+S                save now
   Ctrl+Z / Ctrl+Y       undo / redo
   Ctrl+A / Ctrl+E       home / end
   Home / End            home / end

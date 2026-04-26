@@ -26,9 +26,11 @@ reviewing AI-generated code across multiple worktrees.
   - Unchanged file → **View** (chroma syntax highlight)
   - Folder → listing of immediate children with status markers
   - Toggle View ↔ SplitDiff with `d`
-- **Edit in place** (`i` / `e` to enter, `Ctrl+S` to save, `Ctrl+Z` / `Ctrl+Y`
-  to undo / redo). Syntax highlighting stays on during editing. `Esc` returns
-  to View; `Esc` again returns focus to the tree.
+- **Edit in place** (`i` / `e` to enter, `Ctrl+S` to save now, `Ctrl+Z` /
+  `Ctrl+Y` to undo / redo). Edits **autosave 1.5 s after the last keystroke**
+  and are also flushed when you `Esc` or switch to another file. Syntax
+  highlighting stays on during editing. `Esc` returns to View; `Esc` again
+  returns focus to the tree.
 - **Search**
   - `p` — file name fuzzy search (`sahilm/fuzzy`)
   - `r` — recent files (session-local)
