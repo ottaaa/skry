@@ -10,13 +10,13 @@ import (
 	"github.com/charmbracelet/lipgloss"
 	"github.com/charmbracelet/x/ansi"
 
+	"github.com/ottaaa/skry/internal/applog"
 	"github.com/ottaaa/skry/internal/branchui"
 	"github.com/ottaaa/skry/internal/clipboard"
 	"github.com/ottaaa/skry/internal/editor"
 	"github.com/ottaaa/skry/internal/events"
 	"github.com/ottaaa/skry/internal/git"
 	"github.com/ottaaa/skry/internal/helpui"
-	"github.com/ottaaa/skry/internal/logfile"
 	"github.com/ottaaa/skry/internal/logui"
 	"github.com/ottaaa/skry/internal/modal"
 	"github.com/ottaaa/skry/internal/search"
@@ -63,7 +63,7 @@ type Model struct {
 	previewLastKey string // path+line key to detect cursor moves and reset scroll
 
 	watcher *watcher.Watcher
-	log     *logfile.Logger
+	log     *applog.Logger
 }
 
 // fsChangedMsg is delivered when the file system watcher coalesced one or
@@ -75,7 +75,7 @@ type fsChangedMsg struct{}
 // both close it later and start waiting for its events.
 type watcherStartedMsg struct{ w *watcher.Watcher }
 
-func startWatcher(root string, log *logfile.Logger) tea.Cmd {
+func startWatcher(root string, log *applog.Logger) tea.Cmd {
 	return func() tea.Msg {
 		var lg watcher.Logger
 		if log != nil {
@@ -160,7 +160,7 @@ func New(repoRoot string) Model {
 	// Best-effort open: a write failure must never crash the TUI. The log is
 	// diagnostic only (watcher errors, etc.); when Open fails we just run
 	// without one.
-	lg, _ := logfile.Open(logfile.Options{})
+	lg, _ := applog.Setup()
 	m := Model{
 		repoRoot: repoRoot,
 		focus:    FocusTree,

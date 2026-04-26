@@ -109,9 +109,10 @@ make clean                                # bin/ coverage.* dist/
 - `internal/watcher/watcher.go` — fsnotify 再帰 watcher。debounce 250 ms、
   `.git` / `node_modules` / `.next` / `dist` / `build` / `target` は除外。
   新しいサブディレクトリは Create 検知で自動 add
-- `internal/xdg/xdg.go` — `$XDG_STATE_HOME` 解決 (`~/.local/state` フォールバック)
-- `internal/logfile/logfile.go` — `$XDG_STATE_HOME/skry/log/skry.log` への
-  ローテート JSON-lines logger (10 MiB / 3 backup / 7 day retention)
+- `internal/applog/log.go` — `charmbracelet/log` + `muesli/go-app-paths`
+  (`gap`) で OS 標準のキャッシュディレクトリにレベル付きログを書き込む。
+  watcher / autosave / editor の背景エラーを集める。append-only
+  (rotation はしない)
 
 ### Fixtures
 
@@ -135,13 +136,13 @@ make clean                                # bin/ coverage.* dist/
   HEAD 側 / working 側のどちらかが binary なら `ModeBinary` にフォールバックして
   diff alignment を回避
 - **Logger は narrow interface**: `watcher.Logger` は `Log(msg string, kv ...any)`
-  だけを要求。テストでは nil を渡す。`internal/logfile.Logger` がそれを満たす
+  だけを要求。テストでは nil を渡す。`internal/applog.Logger` がそれを満たす
 - **Ctrl はエディタ専用**: 通常モードでは単キー / Vim スタイルのみ。Ctrl+S /
   Ctrl+Z / Ctrl+Y は Edit モードに入って初めて使える (項目 README + helpui で同期)
 
 ## Testing Conventions
 
-- ロジック層 (git parsing, diff alignment, search, watcher, logfile, undo) は
+- ロジック層 (git parsing, diff alignment, search, watcher, applog, undo) は
   必ず `_test.go` を併設
 - UI 層 (lipgloss でレンダリングしている部分) は基本的に手動確認 (`make dev` で
   サンプル repo を起動)

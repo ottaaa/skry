@@ -234,23 +234,25 @@ GITHUB_TOKEN=$(gh auth token) goreleaser release --clean
 
 ### 5-a. skry のランタイムログ
 
-watcher のエラーや editor の open 失敗などは、TUI を汚さないために以下のファイルに
-JSON-lines で書かれます:
+watcher のエラーや editor の open 失敗、autosave の失敗などは、TUI を汚さない
+ために OS 標準のキャッシュディレクトリに `charmbracelet/log` の logfmt 形式で
+追記されます:
 
-```
-$XDG_STATE_HOME/skry/log/skry.log
-# デフォルト: ~/.local/state/skry/log/skry.log
-```
-
-ローテーション設定: 10 MiB を超えたら `skry.log.<UTC タイムスタンプ>` に rename、
-backup は最大 3 本、7 日経過したら削除。
+| OS | パス |
+| --- | --- |
+| macOS | `~/Library/Caches/skry/skry.log` |
+| Linux | `~/.cache/skry/skry.log` (or `$XDG_CACHE_HOME/skry/skry.log`) |
+| Windows | `%LOCALAPPDATA%\skry\Cache\skry.log` |
 
 ```bash
-# 直近を見る
-tail -n 50 ~/.local/state/skry/log/skry.log
+# 直近を見る (macOS)
+tail -n 50 ~/Library/Caches/skry/skry.log
 
-# JSON でフィルタ (jq があれば)
-jq -c 'select(.msg | startswith("watcher"))' ~/.local/state/skry/log/skry.log
+# 特定キーワードだけ
+grep "watcher:" ~/Library/Caches/skry/skry.log
+
+# 大きくなったら手動で削除して OK (append-only / rotation なし)
+rm ~/Library/Caches/skry/skry.log
 ```
 
 ### 5-b. 自動再読込が効かない
