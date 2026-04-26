@@ -54,6 +54,25 @@ make test-race            # -race + coverage.out
 `make ci` は CI ランナーが叩くターゲット (`= test-race`) なので、CI と同じ
 テスト条件をローカルで再現したいときに便利。
 
+### 1-d. 手元バイナリを最新コードに揃える
+
+skry は **2 箇所** にインストールされうる:
+
+- `./bin/skry` — `make build` の出力。リポジトリ内で動かす用
+- `~/go/bin/skry` (= `$(go env GOPATH)/bin/skry`) — `go install ./cmd/skry`
+  の出力。`PATH` に通っているのでどこからでも `skry` で起動できる
+
+コードを修正したあとは **両方** を更新しないと、ターミナルで `skry` を叩いた
+ときに古い挙動が再現することがある (実際に line-jump 修正の検証時にハマった)。
+最低限これだけ流す:
+
+```bash
+make build && go install ./cmd/skry
+```
+
+挙動確認は `./bin/skry --version` と `skry --version` の両方を見て、表示される
+short SHA が `git rev-parse --short HEAD` と一致することを確認すると安全。
+
 ---
 
 ## 2. CI
