@@ -111,6 +111,8 @@ func (m *Model) GoToLine(line int) {
 		viewportH := max(m.height-2, 1)
 		maxTop := max(len(m.diffRows)-viewportH, 0)
 		m.diffTop = min(max(idx-viewportH/2, 0), maxTop)
+	default:
+		// Blame / Edit / Folder / Binary / Empty: line semantics don't apply.
 	}
 }
 
@@ -296,7 +298,7 @@ func readWorkingBytes(absPath string) ([]byte, error) {
 		if os.IsNotExist(err) {
 			return nil, nil
 		}
-		return nil, err
+		return nil, fmt.Errorf("read %q: %w", absPath, err)
 	}
 	return b, nil
 }
@@ -318,8 +320,9 @@ func isChanged(s git.Status) bool {
 	switch s {
 	case git.StatusModified, git.StatusAdded, git.StatusDeleted, git.StatusRenamed, git.StatusUntracked:
 		return true
+	default:
+		return false
 	}
-	return false
 }
 
 func (m Model) Update(msg tea.Msg) (Model, tea.Cmd) {
@@ -465,7 +468,7 @@ func readWorkingOrEmpty(absPath string) string {
 }
 
 func (m *Model) scrollUp(n int) {
-	switch m.mode {
+	switch m.mode { //nolint:exhaustive // scroll modes only — others are no-ops by design
 	case ModeView:
 		for range n {
 			m.view.ScrollUp()
@@ -484,7 +487,7 @@ func (m *Model) scrollUp(n int) {
 }
 
 func (m *Model) scrollDown(n int) {
-	switch m.mode {
+	switch m.mode { //nolint:exhaustive // scroll modes only — others are no-ops by design
 	case ModeView:
 		for range n {
 			m.view.ScrollDown()
@@ -511,7 +514,7 @@ func (m *Model) scrollDown(n int) {
 }
 
 func (m *Model) scrollTop() {
-	switch m.mode {
+	switch m.mode { //nolint:exhaustive // scrollable modes only
 	case ModeView:
 		m.view.Top()
 	case ModeSplit, ModeCommitDiff:
@@ -522,7 +525,7 @@ func (m *Model) scrollTop() {
 }
 
 func (m *Model) scrollBottom() {
-	switch m.mode {
+	switch m.mode { //nolint:exhaustive // scrollable modes only
 	case ModeView:
 		m.view.Bottom()
 	case ModeSplit, ModeCommitDiff:
@@ -561,13 +564,13 @@ func (m Model) View() string {
 	case ModeFolder:
 		body = renderFolder(m.folderEntries, m.folderTop, bodyH, m.width)
 	case ModeBinary:
-		body = renderBinary(m.binarySize, m.width, bodyH)
+		body = renderBinary(m.binarySize, bodyH)
 	}
 	status := m.renderStatus()
 	return header + "\n" + body + "\n" + status
 }
 
-func renderBinary(size int64, w, h int) string {
+func renderBinary(size int64, h int) string {
 	msg := fmt.Sprintf("Binary file — not shown (%s)", humanSize(size))
 	style := lipgloss.NewStyle().Faint(true)
 	pad := max(h/2, 0)
@@ -592,7 +595,7 @@ func (m Model) renderHeader() string {
 		return lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render("(no file)")
 	}
 	modeTag := ""
-	switch m.mode {
+	switch m.mode { //nolint:exhaustive // ModeEmpty falls out via the if path:"" guard
 	case ModeView:
 		if isChanged(m.status) {
 			modeTag = "[*View|SplitDiff]"
@@ -680,4 +683,3 @@ func (m *Model) Reload() {
 		}
 	}
 }
-

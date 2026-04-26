@@ -92,9 +92,9 @@ func TestUndoEmptyStackIsNoop(t *testing.T) {
 func TestNewEditDiscardsRedo(t *testing.T) {
 	e := loadTempFile(t, "ab")
 	e.col = 2
-	e.insertRune('c')    // "abc"
-	_ = e.Undo()         // back to "ab", redo has "abc"
-	e.insertRune('X')    // "abX" — should drop the redo stack
+	e.insertRune('c') // "abc"
+	_ = e.Undo()      // back to "ab", redo has "abc"
+	e.insertRune('X') // "abX" — should drop the redo stack
 	if len(e.redo) != 0 {
 		t.Errorf("redo stack should be cleared after a fresh edit, got len=%d", len(e.redo))
 	}

@@ -99,7 +99,7 @@ func TestViewModeWrapsLongLineWithMarker(t *testing.T) {
 
 func TestViewModeGoToLineUsesVisualRow(t *testing.T) {
 	v := newViewMode()
-	v.SetSize(20, 10) // numW=3 → maxLine=15
+	v.SetSize(20, 10)               // numW=3 → maxLine=15
 	long := strings.Repeat("Y", 60) // wraps to 4 visual rows
 	var lines []string
 	lines = append(lines, long)

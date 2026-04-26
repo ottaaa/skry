@@ -5,6 +5,7 @@
 package watcher
 
 import (
+	"fmt"
 	"io/fs"
 	"os"
 	"path/filepath"
@@ -51,7 +52,7 @@ type Watcher struct {
 func Start(root string, log Logger) (*Watcher, error) {
 	fsw, err := fsnotify.NewWatcher()
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("watcher: new fsnotify: %w", err)
 	}
 	w := &Watcher{
 		fsw:  fsw,
@@ -75,7 +76,10 @@ func (w *Watcher) Events() <-chan struct{} { return w.out }
 
 func (w *Watcher) Close() error {
 	close(w.done)
-	return w.fsw.Close()
+	if err := w.fsw.Close(); err != nil {
+		return fmt.Errorf("watcher: close fsnotify: %w", err)
+	}
+	return nil
 }
 
 func (w *Watcher) loop() {
@@ -128,7 +132,7 @@ func (w *Watcher) loop() {
 }
 
 func addRecursive(fsw *fsnotify.Watcher, root string) error {
-	return filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
 			// Permission / transient errors on a subtree shouldn't kill the walk.
 			if d != nil && d.IsDir() {
@@ -144,6 +148,10 @@ func addRecursive(fsw *fsnotify.Watcher, root string) error {
 		}
 		return fsw.Add(path)
 	})
+	if walkErr != nil {
+		return fmt.Errorf("watcher: walk %q: %w", root, walkErr)
+	}
+	return nil
 }
 
 // shouldSkip filters events whose paths are inside dirs we chose not to watch.
@@ -163,4 +171,3 @@ func shouldSkip(path string) bool {
 	}
 	return false
 }
-

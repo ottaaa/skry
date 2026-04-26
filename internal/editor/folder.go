@@ -35,7 +35,7 @@ func renderFolder(entries []folderEntry, top, visible, width int) string {
 }
 
 func statusGlyph(s git.Status) (string, lipgloss.Color) {
-	switch s {
+	switch s { //nolint:exhaustive // StatusNone returns empty by intent (handled below)
 	case git.StatusModified:
 		return "M", lipgloss.Color("#e0af68")
 	case git.StatusAdded:

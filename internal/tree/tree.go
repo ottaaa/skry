@@ -48,7 +48,7 @@ func (m *Model) SetFiles(paths []string, statuses map[string]git.Status) {
 		insert(root, p, statuses[p])
 	}
 	sortNode(root)
-	propagateStatus(root, statuses)
+	propagateStatus(root)
 	m.root = root
 	m.rebuildRows()
 	if m.cursor >= len(m.rows) {
@@ -305,7 +305,7 @@ func renderRow(r row, selected bool, width int, flat bool) string {
 	}
 	marker := " "
 	col := lipgloss.Color("#c0caf5")
-	switch r.node.Status {
+	switch r.node.Status { //nolint:exhaustive // StatusNone keeps the default marker/color
 	case git.StatusModified:
 		marker, col = "M", lipgloss.Color("#e0af68")
 	case git.StatusAdded:
@@ -383,13 +383,13 @@ func sortNode(n *Node) {
 
 // propagateStatus bubbles child status up to parent dirs so folders show a
 // marker when any descendant is changed. Priority: D > R > A > M > ? > none.
-func propagateStatus(n *Node, statuses map[string]git.Status) git.Status {
+func propagateStatus(n *Node) git.Status {
 	if !n.IsDir {
 		return n.Status
 	}
 	var best git.Status
 	for _, c := range n.Children {
-		s := propagateStatus(c, statuses)
+		s := propagateStatus(c)
 		best = higher(best, s)
 	}
 	n.Status = best
@@ -398,7 +398,7 @@ func propagateStatus(n *Node, statuses map[string]git.Status) git.Status {
 
 func higher(a, b git.Status) git.Status {
 	rank := func(s git.Status) int {
-		switch s {
+		switch s { //nolint:exhaustive // StatusNone falls through to the trailing return 0
 		case git.StatusDeleted:
 			return 5
 		case git.StatusRenamed:

@@ -96,7 +96,7 @@ func TestIsNewFile(t *testing.T) {
 }
 
 func TestRenderBinaryContainsMessage(t *testing.T) {
-	out := renderBinary(2048, 40, 10)
+	out := renderBinary(2048, 10)
 	if !strings.Contains(out, "Binary file") {
 		t.Errorf("renderBinary output missing label: %q", out)
 	}

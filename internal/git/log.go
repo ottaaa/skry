@@ -45,7 +45,7 @@ func isUnbornBranchErr(err error) bool {
 }
 
 func parseLogOutput(out string) []Commit {
-	var commits []Commit
+	commits := make([]Commit, 0, strings.Count(out, "\n")+1)
 	for line := range strings.SplitSeq(out, "\n") {
 		if line == "" {
 			continue

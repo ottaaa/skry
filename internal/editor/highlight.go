@@ -12,8 +12,10 @@ import (
 
 const maxHighlightBytes = 512 * 1024
 
-var highlightStyle = styles.Get("github-dark")
-var formatter = formatters.Get("terminal256")
+var (
+	highlightStyle = styles.Get("github-dark")
+	formatter      = formatters.Get("terminal256")
+)
 
 // Highlight returns the source split into ANSI-colored lines. For very large
 // files, highlighting is skipped to keep the UI responsive.

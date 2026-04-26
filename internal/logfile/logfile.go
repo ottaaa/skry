@@ -105,7 +105,10 @@ func (l *Logger) Close() error {
 	}
 	err := l.f.Close()
 	l.f = nil
-	return err
+	if err != nil {
+		return fmt.Errorf("logfile: close: %w", err)
+	}
+	return nil
 }
 
 // Log writes one JSON object containing a timestamp, a message, and any
@@ -172,14 +175,14 @@ func (l *Logger) rotateLocked() error {
 		return errors.New("logfile: rotate on closed logger")
 	}
 	if err := l.f.Close(); err != nil {
-		return err
+		return fmt.Errorf("logfile: close pre-rotate: %w", err)
 	}
 	l.f = nil
 	src := filepath.Join(l.dir, l.base)
 	ts := time.Now().UTC().Format("20060102T150405")
 	dst := filepath.Join(l.dir, l.base+"."+ts)
 	if err := os.Rename(src, dst); err != nil && !errors.Is(err, os.ErrNotExist) {
-		return err
+		return fmt.Errorf("logfile: rotate rename: %w", err)
 	}
 	l.pruneByCount()
 	return l.openFile()

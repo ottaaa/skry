@@ -51,8 +51,9 @@ func TestEditorOpenThenGoToLineSplitDiff(t *testing.T) {
 		t.Fatal(err)
 	}
 
+	ctx := t.Context()
 	run := func(args ...string) {
-		cmd := exec.Command("git", args...)
+		cmd := exec.CommandContext(ctx, "git", args...)
 		cmd.Dir = dir
 		cmd.Env = append(os.Environ(),
 			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",

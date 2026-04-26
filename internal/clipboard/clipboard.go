@@ -1,8 +1,17 @@
 package clipboard
 
-import "github.com/atotto/clipboard"
+import (
+	"fmt"
+
+	"github.com/atotto/clipboard"
+)
 
 // Copy writes s to the system clipboard. Errors surface to the caller; the
 // atotto implementation falls back to an in-memory buffer on unsupported
 // platforms, so Copy never silently drops input.
-func Copy(s string) error { return clipboard.WriteAll(s) }
+func Copy(s string) error {
+	if err := clipboard.WriteAll(s); err != nil {
+		return fmt.Errorf("clipboard write: %w", err)
+	}
+	return nil
+}

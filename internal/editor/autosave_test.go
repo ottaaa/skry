@@ -92,11 +92,16 @@ func dispatchTick(t *testing.T, m Model, version int) (Model, tea.Msg) {
 	return newM, cmd()
 }
 
-// editorOnFile returns a Model rooted at the temp dir holding `name` with
-// `content`, already in ModeEdit. The chroma extension hint comes from
-// `name`.
-func editorOnFile(t *testing.T, name, content string) Model {
+// editorOnFile returns a Model rooted at a temp dir, holding "f.txt" with
+// the canonical "hello" content, already in ModeEdit. Hardcoding both keeps
+// the test helper focused on the autosave path under exercise rather than
+// chroma language detection or file I/O variability.
+func editorOnFile(t *testing.T) Model {
 	t.Helper()
+	const (
+		name    = "f.txt"
+		content = "hello"
+	)
 	dir := t.TempDir()
 	abs := filepath.Join(dir, name)
 	if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
@@ -115,7 +120,7 @@ func editorOnFile(t *testing.T, name, content string) Model {
 }
 
 func TestAutosaveTickWithMatchingVersionWritesFile(t *testing.T) {
-	m := editorOnFile(t, "f.txt", "hello")
+	m := editorOnFile(t)
 	m.edit.col = 5
 	m.edit.insertRune('!') // bumps to version 1, sets dirty=true
 	v := m.edit.autosaveVersion
@@ -139,7 +144,7 @@ func TestAutosaveTickWithMatchingVersionWritesFile(t *testing.T) {
 }
 
 func TestAutosaveTickWithStaleVersionIsNoop(t *testing.T) {
-	m := editorOnFile(t, "f.txt", "hello")
+	m := editorOnFile(t)
 	m.edit.col = 5
 	m.edit.insertRune('!')
 	staleV := m.edit.autosaveVersion
@@ -156,7 +161,7 @@ func TestAutosaveTickWithStaleVersionIsNoop(t *testing.T) {
 }
 
 func TestAutosaveTickWhenCleanIsNoop(t *testing.T) {
-	m := editorOnFile(t, "f.txt", "hello")
+	m := editorOnFile(t)
 	v := m.edit.autosaveVersion
 	// dirty stays false; even if a tick somehow fires with this version
 	// the autosave must not redundantly write.
@@ -167,7 +172,7 @@ func TestAutosaveTickWhenCleanIsNoop(t *testing.T) {
 }
 
 func TestAutosaveTickOutsideEditModeIsNoop(t *testing.T) {
-	m := editorOnFile(t, "f.txt", "hello")
+	m := editorOnFile(t)
 	m.edit.col = 5
 	m.edit.insertRune('!')
 	v := m.edit.autosaveVersion
@@ -189,7 +194,7 @@ func TestAutosaveDelay(t *testing.T) {
 }
 
 func TestEscFlushesSave(t *testing.T) {
-	m := editorOnFile(t, "f.txt", "hello")
+	m := editorOnFile(t)
 	m.edit.col = 5
 	m.edit.insertRune('!')
 	if !m.edit.dirty {

@@ -9,9 +9,9 @@ import (
 
 func TestParseGrepLine(t *testing.T) {
 	cases := []struct {
-		in      string
-		want    GrepHit
-		wantOK  bool
+		in     string
+		want   GrepHit
+		wantOK bool
 	}{
 		{"README.md:3:hello world", GrepHit{Path: "README.md", Line: 3, Text: "hello world"}, true},
 		{"a/b/c.go:42:func foo() {", GrepHit{Path: "a/b/c.go", Line: 42, Text: "func foo() {"}, true},

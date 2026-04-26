@@ -19,7 +19,10 @@ func Branches(dir string) ([]Branch, error) {
 }
 
 func parseBranchesOutput(out string) []Branch {
-	var res []Branch
+	// Rough preallocation: every line is a candidate branch, minus blanks.
+	// Slight over-allocation is cheaper than the realloc churn for a repo
+	// with hundreds of branches.
+	res := make([]Branch, 0, strings.Count(out, "\n")+1)
 	for line := range strings.SplitSeq(out, "\n") {
 		if line == "" {
 			continue

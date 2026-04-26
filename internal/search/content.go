@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"context"
 	"errors"
+	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -217,7 +218,7 @@ func runRg(root, query string) ([]GrepHit, error) {
 		if errors.As(err, &ee) && ee.ExitCode() == 1 {
 			return nil, nil // ripgrep exit 1 = no matches
 		}
-		return nil, err
+		return nil, fmt.Errorf("ripgrep: %w", err)
 	}
 	var hits []GrepHit
 	for line := range strings.SplitSeq(string(out), "\n") {

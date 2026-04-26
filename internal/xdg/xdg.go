@@ -4,6 +4,7 @@
 package xdg
 
 import (
+	"fmt"
 	"os"
 	"path/filepath"
 )
@@ -30,7 +31,7 @@ func AppStateDir(sub ...string) (string, error) {
 	parts := append([]string{StateHome(), "skry"}, sub...)
 	dir := filepath.Join(parts...)
 	if err := os.MkdirAll(dir, 0o700); err != nil {
-		return dir, err
+		return dir, fmt.Errorf("xdg: mkdir %q: %w", dir, err)
 	}
 	return dir, nil
 }

@@ -3,12 +3,34 @@ run:
   timeout: 5m
 linters:
   enable:
+    # Behavioral / correctness
     - errorlint
-    - godot
+    - exhaustive       # enum switch coverage (Mode, DiffOp, etc.)
+    - bodyclose        # HTTP response.Body must be closed
+    - noctx            # HTTP requests without context.Context
+    - nilerr           # `return nil` right after seeing a non-nil error
+    - rowserrcheck     # SQL — no false-positive cost; cheap insurance
+    - sqlclosecheck
+
+    # Code quality
     - gosec
     - misspell
     - revive
     - modernize
+    - nakedret         # naked returns in long functions
+    - nestif           # deeply nested if/else trees
+    - prealloc         # `var s []T; for { s = append(...) }` → preallocate
+    - unconvert        # redundant type conversions
+    - unparam          # unused function parameters
+    - whitespace       # leading/trailing blank lines inside funcs
+
+    # Documentation / hygiene
+    - godot            # comments end with a period
+    - goconst          # string literals repeated 3+ times
+    - goprintffuncname # `Print`/`Printf` naming convention
+    - nolintlint       # //nolint comment hygiene
+    - wrapcheck        # external errors must be wrapped with %w
+
   # funcorder (exported-before-unexported) is intentionally disabled: the
   # existing code groups methods by concern (input → state → render) rather
   # than visibility. Enabling it would produce a large mechanical diff with
@@ -38,6 +60,22 @@ linters:
         # G304 (file inclusion via variable) — skry is a file viewer; it
         # must open arbitrary paths by design.
         - G304
+    nestif:
+      # Default is 5 (count of nested ifs). Bump slightly: editor/git
+      # parsers have a couple of legitimately deep state machines.
+      min-complexity: 6
+    exhaustive:
+      # Most of skry's enum switches handle the "interesting" cases and
+      # fall through to a `default:` for the rest (e.g. ModeEmpty / Status
+      # values that aren't actionable here). A `default:` is a deliberate
+      # design choice; treat it as exhaustive.
+      default-signifies-exhaustive: true
+    wrapcheck:
+      # Errors crossing package boundaries should add %w context. These
+      # internal packages are part of the same logical service so wrapping
+      # adds noise without diagnostic value.
+      ignore-package-globs:
+        - github.com/ottaaa/skry/*
   exclusions:
     generated: lax
     presets:
@@ -52,13 +90,18 @@ linters:
       - examples$
     rules:
       # Test files get looser treatment for exported-comment and doc-period
-      # rules; tests are their own documentation.
+      # rules; tests are their own documentation. Also relax wrapcheck and
+      # goconst — fixtures naturally repeat literals.
       - path: _test\.go
         linters:
           - revive
           - godot
           - gosec
           - funcorder
+          - wrapcheck
+          - goconst
+          - prealloc
+          - nestif
       # chroma exposes a function named Analyse (British spelling). misspell
       # otherwise has no false positives so we narrow the exclusion to the
       # one file that calls it.
@@ -67,6 +110,9 @@ linters:
         linters:
           - misspell
 formatters:
+  enable:
+    - gofumpt          # stricter superset of gofmt
+    - goimports        # group imports stdlib/third-party/local
   exclusions:
     generated: lax
     paths:

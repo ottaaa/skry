@@ -935,4 +935,3 @@ func (m Model) renderBody() string {
 	right := editorStyle.Width(editorOuterW - 2).Height(bodyH - 2).Render(m.editor.View())
 	return lipgloss.JoinHorizontal(lipgloss.Top, left, right)
 }
-

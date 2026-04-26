@@ -123,7 +123,7 @@ func RenderSplit(rows []DiffRow, top, visible, width int) string {
 			rightInner := fitANSI(r.Right, perSide)
 			leftLine := leftNum + " " + leftInner
 			rightLine := rightNum + " " + rightInner
-			switch r.Op {
+			switch r.Op { //nolint:exhaustive // DiffEqual leaves both halves un-styled
 			case DiffDel:
 				leftLine = delBg.Render(leftLine)
 			case DiffAdd:
@@ -173,4 +173,3 @@ func intToString(n int) string {
 	}
 	return string(buf[i:])
 }
-

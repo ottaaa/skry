@@ -1,6 +1,7 @@
 package editor
 
 import (
+	"fmt"
 	"os"
 	"strings"
 	"time"
@@ -133,7 +134,7 @@ func newEditMode() editMode { return editMode{lines: [][]rune{{}}} }
 func (e *editMode) Load(absPath, relPath, content string) error {
 	info, err := os.Stat(absPath)
 	if err != nil {
-		return err
+		return fmt.Errorf("editor: stat %q: %w", absPath, err)
 	}
 	e.path = absPath
 	e.filename = relPath
@@ -181,7 +182,7 @@ func (e *editMode) Save() error {
 		perm = 0o644
 	}
 	if err := os.WriteFile(e.path, []byte(content), perm); err != nil {
-		return err
+		return fmt.Errorf("editor: write %q: %w", e.path, err)
 	}
 	e.saved = content
 	e.dirty = false
