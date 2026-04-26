@@ -62,18 +62,28 @@ type Model struct {
 	previewScroll  int    // line-offset added to the modal-preview top (pgup/pgdn)
 	previewLastKey string // path+line key to detect cursor moves and reset scroll
 
-	watcher *watcher.Watcher
-	log     *applog.Logger
+	watcher     *watcher.Watcher     // recursive: tree / status refresh
+	fileWatcher *watcher.FileWatcher // per-file: faster editor reload
+	log         *applog.Logger
 }
 
-// fsChangedMsg is delivered when the file system watcher coalesced one or
-// more events. The handler refreshes statuses/file list and reloads the
-// editor's current file (if safe to do so).
+// fsChangedMsg is delivered when the recursive file system watcher
+// coalesced one or more events. The handler refreshes statuses/file list
+// and reloads the editor's current file (if safe to do so).
 type fsChangedMsg struct{}
 
-// watcherStartedMsg delivers the watcher handle into the model so we can
-// both close it later and start waiting for its events.
-type watcherStartedMsg struct{ w *watcher.Watcher }
+// fileChangedMsg is delivered when the per-file watcher (scoped to the
+// currently-open editor file) sees a write. Handler is intentionally
+// narrow: it just calls editor.Reload(), no tree refresh, no git status
+// shell-out. Keeps the focus-file feedback fast.
+type fileChangedMsg struct{}
+
+// watcherStartedMsg delivers both watcher handles into the model so we
+// can close them later and start waiting for their events.
+type watcherStartedMsg struct {
+	w  *watcher.Watcher
+	fw *watcher.FileWatcher
+}
 
 func startWatcher(root string, log *applog.Logger) tea.Cmd {
 	return func() tea.Msg {
@@ -87,9 +97,28 @@ func startWatcher(root string, log *applog.Logger) tea.Cmd {
 			if log != nil {
 				log.Log("app: watcher start failed", "root", root, "err", err.Error())
 			}
-			return watcherStartedMsg{w: nil}
+			return watcherStartedMsg{}
 		}
-		return watcherStartedMsg{w: w}
+		fw, err := watcher.StartFile(lg)
+		if err != nil {
+			if log != nil {
+				log.Log("app: filewatcher start failed", "err", err.Error())
+			}
+			// Recursive watcher still works without the per-file fast path.
+			return watcherStartedMsg{w: w}
+		}
+		return watcherStartedMsg{w: w, fw: fw}
+	}
+}
+
+// waitForFile blocks on the per-file watcher and emits a fileChangedMsg.
+func waitForFile(fw *watcher.FileWatcher) tea.Cmd {
+	if fw == nil {
+		return nil
+	}
+	return func() tea.Msg {
+		<-fw.Events()
+		return fileChangedMsg{}
 	}
 }
 
@@ -345,12 +374,29 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 		m.watcher = msg.w
-		return m, waitForFS(m.watcher)
+		m.fileWatcher = msg.fw
+		// If the editor is already showing a file (e.g. preview-on-load
+		// fired before the watcher was ready), point the per-file watcher
+		// at it now.
+		if m.fileWatcher != nil {
+			if p := m.editor.Path(); p != "" {
+				m.fileWatcher.Watch(filepath.Join(m.repoRoot, p))
+			}
+		}
+		return m, tea.Batch(waitForFS(m.watcher), waitForFile(m.fileWatcher))
 
 	case fsChangedMsg:
 		// Coalesce any further events into the next refresh by issuing a
 		// single reload Cmd, then arm for the next watcher event.
 		return m, tea.Batch(fsReload(m.repoRoot), waitForFS(m.watcher))
+
+	case fileChangedMsg:
+		// Per-file fast path: just reload the editor's current buffer.
+		// No git status shell-out, no tree refresh — those will arrive
+		// shortly after via fsChangedMsg if the change is also visible to
+		// the recursive watcher.
+		m.editor.Reload()
+		return m, waitForFile(m.fileWatcher)
 
 	case fsReloadedMsg:
 		if msg.err != nil {
@@ -386,6 +432,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.watcher != nil {
 			_ = m.watcher.Close()
 			m.watcher = nil
+		}
+		if m.fileWatcher != nil {
+			_ = m.fileWatcher.Close()
+			m.fileWatcher = nil
 		}
 		return m, tea.Batch(loadRepo(msg.Path), startWatcher(msg.Path, m.log))
 
@@ -501,7 +551,22 @@ func (m Model) handleOpenFile(msg events.OpenFileMsg) (tea.Model, tea.Cmd) {
 	m.tree.SetFocused(false)
 	m.editor.SetFocused(true)
 	m.pushRecent(msg.Path)
+	m.refocusFileWatcher(msg.Path)
 	return m, nil
+}
+
+// refocusFileWatcher points the per-file watcher at the absolute path of
+// `relPath`. nil-safe: if the watcher failed to start we just don't get
+// the fast path. Empty path detaches.
+func (m *Model) refocusFileWatcher(relPath string) {
+	if m.fileWatcher == nil {
+		return
+	}
+	if relPath == "" {
+		m.fileWatcher.Watch("")
+		return
+	}
+	m.fileWatcher.Watch(filepath.Join(m.repoRoot, relPath))
 }
 
 func (m *Model) pushRecent(path string) {
@@ -656,11 +721,13 @@ func (m *Model) previewAt(msg events.CursorMovedMsg) {
 	if msg.IsDir {
 		entries := m.folderEntries(msg.Path)
 		m.editor.OpenFolderPreview(msg.Path, entries, m.statuses)
+		m.refocusFileWatcher("")
 		return
 	}
 	if err := m.editor.Open(msg.Path, m.statuses[msg.Path]); err != nil && m.log != nil {
 		m.log.Log("editor: open failed", "path", msg.Path, "err", err.Error())
 	}
+	m.refocusFileWatcher(msg.Path)
 }
 
 // folderEntries returns the immediate children of dirPath in the current file
