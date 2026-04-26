@@ -31,6 +31,7 @@ type GrepModal struct {
 	input   textinput.Model
 	hits    []GrepHit
 	cursor  int
+	top     int
 	err     string
 	running bool
 
@@ -85,6 +86,7 @@ func (m *GrepModal) Update(msg tea.Msg) (modal.Modal, tea.Cmd) {
 		m.running = false
 		m.hits = msg.hits
 		m.cursor = 0
+		m.top = 0
 		if msg.err != nil {
 			m.err = msg.err.Error()
 		} else {
@@ -160,7 +162,20 @@ func (m *GrepModal) View(width, height int) string {
 		b.WriteString(lipgloss.NewStyle().Faint(true).Render(legendForHits(len(m.hits))))
 	}
 	b.WriteByte('\n')
-	for i := 0; i < listH && i < len(m.hits); i++ {
+	if listH < 1 {
+		listH = 1
+	}
+	if m.cursor < m.top {
+		m.top = m.cursor
+	}
+	if m.cursor >= m.top+listH {
+		m.top = m.cursor - listH + 1
+	}
+	if m.top < 0 {
+		m.top = 0
+	}
+	end := min(m.top+listH, len(m.hits))
+	for i := m.top; i < end; i++ {
 		h := m.hits[i]
 		line := h.Path + ":" + strconv.Itoa(h.Line) + "  " + strings.TrimSpace(h.Text)
 		if lipgloss.Width(line) > w {
@@ -170,7 +185,7 @@ func (m *GrepModal) View(width, height int) string {
 			line = lipgloss.NewStyle().Background(lipgloss.Color("#7aa2f7")).Foreground(lipgloss.Color("#1a1b26")).Render(padRight(line, w))
 		}
 		b.WriteString(line)
-		if i < listH-1 && i < len(m.hits)-1 {
+		if i < end-1 {
 			b.WriteByte('\n')
 		}
 	}

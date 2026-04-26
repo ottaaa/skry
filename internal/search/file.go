@@ -18,6 +18,7 @@ type FileModal struct {
 	files   []string
 	results []fuzzy.Match
 	cursor  int
+	top     int
 }
 
 func NewFileModal(files []string) modal.Modal {
@@ -85,6 +86,7 @@ func (m *FileModal) refine() {
 	if m.cursor >= len(m.results) {
 		m.cursor = 0
 	}
+	m.top = 0
 }
 
 // PreviewPath implements modal.Previewer: returns the relative path of the
@@ -104,12 +106,25 @@ func (m *FileModal) View(width, height int) string {
 	w := max(width-8, 40)
 	h := max(height-6, 8)
 	listH := h - 3
+	if listH < 1 {
+		listH = 1
+	}
+	if m.cursor < m.top {
+		m.top = m.cursor
+	}
+	if m.cursor >= m.top+listH {
+		m.top = m.cursor - listH + 1
+	}
+	if m.top < 0 {
+		m.top = 0
+	}
 	var b strings.Builder
 	b.WriteString(lipgloss.NewStyle().Bold(true).Foreground(lipgloss.Color("#7aa2f7")).Render(m.title))
 	b.WriteString("\n")
 	b.WriteString(m.input.View())
 	b.WriteString("\n")
-	for i := 0; i < listH && i < len(m.results); i++ {
+	end := min(m.top+listH, len(m.results))
+	for i := m.top; i < end; i++ {
 		line := m.results[i].Str
 		if lipgloss.Width(line) > w {
 			line = line[:max(0, w-1)] + "…"
@@ -118,7 +133,7 @@ func (m *FileModal) View(width, height int) string {
 			line = lipgloss.NewStyle().Background(lipgloss.Color("#7aa2f7")).Foreground(lipgloss.Color("#1a1b26")).Render(padRight(line, w))
 		}
 		b.WriteString(line)
-		if i < listH-1 && i < len(m.results)-1 {
+		if i < end-1 {
 			b.WriteByte('\n')
 		}
 	}
