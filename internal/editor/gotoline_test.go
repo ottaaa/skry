@@ -80,3 +80,37 @@ func TestViewModeGoToLineNoOp(t *testing.T) {
 }
 
 func join(lines []string) string { return strings.Join(lines, "\n") }
+
+func TestViewModeWrapsLongLineWithMarker(t *testing.T) {
+	v := newViewMode()
+	v.SetSize(20, 10) // numW=3 → maxLine = 20-3-2 = 15
+	long := strings.Repeat("X", 50)
+	v.Load("x.txt", long+"\nshort")
+	out := v.vp.View()
+	if !strings.Contains(out, "↪") {
+		t.Errorf("wrapped row should show continuation marker ↪, got:\n%s", out)
+	}
+	// "short" sits on source line 2; with one wrapped first line it should
+	// appear at visual row index = ceil(50/15) = 4.
+	if got := v.lineFirstRow[1]; got != 4 {
+		t.Errorf("lineFirstRow[1] = %d, want 4 (after wrapping a 50-char line at width 15)", got)
+	}
+}
+
+func TestViewModeGoToLineUsesVisualRow(t *testing.T) {
+	v := newViewMode()
+	v.SetSize(20, 10) // numW=3 → maxLine=15
+	long := strings.Repeat("Y", 60) // wraps to 4 visual rows
+	var lines []string
+	lines = append(lines, long)
+	for i := 2; i <= 50; i++ {
+		lines = append(lines, "row")
+	}
+	v.Load("x.txt", join(lines))
+	v.GoToLine(10)
+	// line 10 → src idx 9 → visual row = 4 (wrapped first line) + 8 (rows 2-9) = 12
+	// target = 12 - 10/2 = 7
+	if got := v.vp.YOffset; got != 7 {
+		t.Errorf("GoToLine(10) yoffset = %d, want 7 (centered on visual row 12)", got)
+	}
+}

@@ -5,6 +5,7 @@ import (
 
 	"github.com/charmbracelet/bubbles/viewport"
 	"github.com/charmbracelet/lipgloss"
+	"github.com/charmbracelet/x/ansi"
 )
 
 type viewMode struct {
@@ -17,6 +18,11 @@ type viewMode struct {
 	query     string
 	matches   []matchHit
 	matchIdx  int
+
+	// lineFirstRow[i] is the first visual row index of source line i in the
+	// rendered (wrapped) viewport content. Used by GoToLine and jumpToMatch
+	// to translate 1-based source line numbers into viewport y-offsets.
+	lineFirstRow []int
 }
 
 type matchHit struct {
@@ -49,23 +55,36 @@ func (v *viewMode) rebuild() {
 	numW := max(digits(len(v.raw)), 3)
 	// Reserve 1 column for the scrollbar on the right.
 	maxLine := max(v.vp.Width-numW-2, 8)
+	numStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89"))
+	contStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#3b4261"))
+	contGutter := contStyle.Render(strings.Repeat(" ", numW-1) + "↪")
+	v.lineFirstRow = make([]int, len(v.raw))
 	var b strings.Builder
+	row := 0
 	for i, ln := range v.lines {
 		if i >= len(v.raw) {
 			break
 		}
-		num := lipgloss.NewStyle().Foreground(lipgloss.Color("#565f89")).Render(padNum(i+1, numW))
+		v.lineFirstRow[i] = row
+		num := numStyle.Render(padNum(i+1, numW))
 		rendered := ln
 		if v.query != "" {
 			rendered = highlightMatches(v.raw[i], v.query)
 		}
-		rendered = clipANSI(rendered, maxLine)
-		b.WriteString(num + " " + rendered)
-		if i < len(v.lines)-1 {
+		rendered = expandTabs(rendered)
+		chunks := strings.Split(ansi.Hardwrap(rendered, maxLine, false), "\n")
+		for j, c := range chunks {
+			if j == 0 {
+				b.WriteString(num + " " + c)
+			} else {
+				b.WriteString(contGutter + " " + c)
+			}
 			b.WriteByte('\n')
+			row++
 		}
 	}
-	v.vp.SetContent(b.String())
+	out := strings.TrimSuffix(b.String(), "\n")
+	v.vp.SetContent(out)
 }
 
 func highlightMatches(raw, q string) string {
@@ -162,7 +181,7 @@ func (v *viewMode) jumpToMatch(idx int) {
 		return
 	}
 	m := v.matches[idx]
-	v.vp.SetYOffset(m.line - v.vp.Height/2)
+	v.vp.SetYOffset(v.visualRow(m.line) - v.vp.Height/2)
 }
 
 // GoToLine scrolls the viewport so the 1-based `line` is roughly in the
@@ -171,8 +190,21 @@ func (v *viewMode) GoToLine(line int) {
 	if line <= 0 {
 		return
 	}
-	target := max(line-1-v.vp.Height/2, 0)
+	target := max(v.visualRow(line-1)-v.vp.Height/2, 0)
 	v.vp.SetYOffset(target)
+}
+
+// visualRow returns the viewport row that the (0-based) source line starts
+// at, after wrapping. Falls back to the source index itself when the wrap
+// table hasn't been built yet.
+func (v *viewMode) visualRow(srcIdx int) int {
+	if srcIdx < 0 {
+		return 0
+	}
+	if srcIdx >= len(v.lineFirstRow) {
+		return srcIdx
+	}
+	return v.lineFirstRow[srcIdx]
 }
 
 func (v viewMode) Searching() bool { return v.searching }
