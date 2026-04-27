@@ -133,8 +133,12 @@ func (w *Watcher) loop() {
 
 func addRecursive(fsw *fsnotify.Watcher, root string) error {
 	walkErr := filepath.WalkDir(root, func(path string, d fs.DirEntry, err error) error {
+		// Never propagate an error: a single broken symlink (e.g. a dangling
+		// .cursor/commands/pr.md) or transient ENOENT in one subtree must not
+		// halt the walk and leave the rest of the repo unwatched. Worst case,
+		// we miss a few subdirs and lose change notifications under them — far
+		// better than missing every directory alphabetically after the failure.
 		if err != nil {
-			// Permission / transient errors on a subtree shouldn't kill the walk.
 			if d != nil && d.IsDir() {
 				return fs.SkipDir
 			}
@@ -146,7 +150,8 @@ func addRecursive(fsw *fsnotify.Watcher, root string) error {
 		if _, skip := skipDirs[d.Name()]; skip && path != root {
 			return fs.SkipDir
 		}
-		return fsw.Add(path)
+		_ = fsw.Add(path)
+		return nil
 	})
 	if walkErr != nil {
 		return fmt.Errorf("watcher: walk %q: %w", root, walkErr)
