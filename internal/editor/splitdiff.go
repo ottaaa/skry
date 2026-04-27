@@ -79,6 +79,72 @@ func AlignLines(left, right string) []DiffRow {
 	return rows
 }
 
+// isHunkStart reports whether rows[i] is the first row of a contiguous run
+// of non-Equal rows (a "hunk").
+func isHunkStart(rows []DiffRow, i int) bool {
+	if i < 0 || i >= len(rows) || rows[i].Op == DiffEqual {
+		return false
+	}
+	return i == 0 || rows[i-1].Op == DiffEqual
+}
+
+// FirstHunkRow returns the index of the first hunk start, or -1 if there are
+// no diff rows in `rows`.
+func FirstHunkRow(rows []DiffRow) int { return NextHunkRow(rows, -1) }
+
+// HunkAnchor returns the index of the hunk that currently anchors the
+// viewport whose top is `diffTop`. If diffTop sits inside a hunk, the start
+// of that hunk is returned. Otherwise the next hunk start at or after
+// diffTop is returned. Returns -1 when no hunk is visible from diffTop on.
+//
+// This is the reference point n/N navigation jumps from, so that a viewport
+// positioned with leading context (diffTop = firstHunk-1) still treats the
+// visible hunk as "current" rather than "next".
+func HunkAnchor(rows []DiffRow, diffTop int) int {
+	if diffTop < 0 {
+		diffTop = 0
+	}
+	if diffTop >= len(rows) {
+		return -1
+	}
+	if rows[diffTop].Op != DiffEqual {
+		i := diffTop
+		for i > 0 && rows[i-1].Op != DiffEqual {
+			i--
+		}
+		return i
+	}
+	for i := diffTop; i < len(rows); i++ {
+		if isHunkStart(rows, i) {
+			return i
+		}
+	}
+	return -1
+}
+
+// NextHunkRow returns the index of the first hunk start strictly after `from`,
+// or -1 if none. If `from` is inside a hunk this skips past it to the next.
+func NextHunkRow(rows []DiffRow, from int) int {
+	for i := from + 1; i < len(rows); i++ {
+		if isHunkStart(rows, i) {
+			return i
+		}
+	}
+	return -1
+}
+
+// PrevHunkRow returns the index of the last hunk start strictly before `from`,
+// or -1 if none. If `from` is at the start of a hunk this jumps to the prior
+// hunk (Vim `[c`-style).
+func PrevHunkRow(rows []DiffRow, from int) int {
+	for i := from - 1; i >= 0; i-- {
+		if isHunkStart(rows, i) {
+			return i
+		}
+	}
+	return -1
+}
+
 // splitKeep splits a block of text into lines but drops the trailing empty
 // string that results from a final newline. An intentional empty line from
 // consecutive newlines is kept.

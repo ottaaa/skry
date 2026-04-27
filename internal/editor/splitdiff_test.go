@@ -83,6 +83,93 @@ func TestSplitKeep(t *testing.T) {
 	}
 }
 
+func TestHunkNavigationHelpers(t *testing.T) {
+	// Layout (indices):
+	//   0 Equal
+	//   1 Equal
+	//   2 Change   ← hunk A start
+	//   3 Add
+	//   4 Equal
+	//   5 Equal
+	//   6 Del      ← hunk B start
+	//   7 Equal
+	//   8 Add      ← hunk C start
+	rows := []DiffRow{
+		{Op: DiffEqual}, {Op: DiffEqual},
+		{Op: DiffChange}, {Op: DiffAdd},
+		{Op: DiffEqual}, {Op: DiffEqual},
+		{Op: DiffDel},
+		{Op: DiffEqual},
+		{Op: DiffAdd},
+	}
+
+	if got := FirstHunkRow(rows); got != 2 {
+		t.Errorf("FirstHunkRow = %d, want 2", got)
+	}
+	cases := []struct {
+		name string
+		fn   func() int
+		want int
+	}{
+		{"next from before any hunk", func() int { return NextHunkRow(rows, -1) }, 2},
+		{"next from inside hunk A", func() int { return NextHunkRow(rows, 2) }, 6},
+		{"next from equal between hunks", func() int { return NextHunkRow(rows, 4) }, 6},
+		{"next from last hunk", func() int { return NextHunkRow(rows, 8) }, -1},
+		{"prev from inside hunk C", func() int { return PrevHunkRow(rows, 8) }, 6},
+		{"prev from equal between B and C", func() int { return PrevHunkRow(rows, 7) }, 6},
+		{"prev from start of hunk A", func() int { return PrevHunkRow(rows, 2) }, -1},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := c.fn(); got != c.want {
+				t.Errorf("got %d, want %d", got, c.want)
+			}
+		})
+	}
+}
+
+func TestHunkAnchor(t *testing.T) {
+	// Same layout as TestHunkNavigationHelpers.
+	rows := []DiffRow{
+		{Op: DiffEqual}, {Op: DiffEqual},
+		{Op: DiffChange}, {Op: DiffAdd},
+		{Op: DiffEqual}, {Op: DiffEqual},
+		{Op: DiffDel},
+		{Op: DiffEqual},
+		{Op: DiffAdd},
+	}
+	cases := []struct {
+		name    string
+		diffTop int
+		want    int
+	}{
+		{"top in leading equal context", 0, 2},
+		{"top one line above hunk A", 1, 2},
+		{"top at hunk A start", 2, 2},
+		{"top inside hunk A (second line)", 3, 2},
+		{"top in equal between A and B", 4, 6},
+		{"top at hunk B", 6, 6},
+		{"top at hunk C", 8, 8},
+	}
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			if got := HunkAnchor(rows, c.diffTop); got != c.want {
+				t.Errorf("HunkAnchor(diffTop=%d) = %d, want %d", c.diffTop, got, c.want)
+			}
+		})
+	}
+}
+
+func TestFirstHunkRowEmptyAndAllEqual(t *testing.T) {
+	if got := FirstHunkRow(nil); got != -1 {
+		t.Errorf("FirstHunkRow(nil) = %d, want -1", got)
+	}
+	allEq := []DiffRow{{Op: DiffEqual}, {Op: DiffEqual}}
+	if got := FirstHunkRow(allEq); got != -1 {
+		t.Errorf("FirstHunkRow(all equal) = %d, want -1", got)
+	}
+}
+
 // TestRenderSplitConstantRowWidth covers a scrollbar-alignment regression:
 // at odd widths the per-side integer division dropped one column on content
 // rows, so the scrollbar character drifted left between content and empty

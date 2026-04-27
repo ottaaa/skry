@@ -54,8 +54,8 @@ Editor (View / SplitDiff / CommitDiff)
   g / G                 top / bottom
   d                     toggle View ↔ SplitDiff (working tree)
   B                     toggle Blame
-  /                     find in file
-  n / N                 next / prev match
+  /                     find in file (View)
+  n / N                 next / prev match (View) or next / prev hunk (Diff)
   i / e                 enter Edit mode
   Esc                   back to tree
 

@@ -116,6 +116,22 @@ func (m *Model) GoToLine(line int) {
 	}
 }
 
+// jumpToHunkRow positions diffTop so the hunk-start row at idx sits near the
+// top of the viewport with one line of context above (when possible). idx<0
+// is a no-op so callers can pass NextHunkRow / PrevHunkRow results directly.
+func (m *Model) jumpToHunkRow(idx int) {
+	if idx < 0 {
+		return
+	}
+	viewportH := max(m.height-2, 1)
+	maxTop := max(len(m.diffRows)-viewportH, 0)
+	target := max(idx-1, 0)
+	if target > maxTop {
+		target = maxTop
+	}
+	m.diffTop = target
+}
+
 // findRightLineRow returns the index of the first diff row whose RightNum
 // equals `line` (1-based). Returns -1 for line <= 0 or when no row matches
 // (the latter can happen if the requested line was deleted entirely).
@@ -211,6 +227,7 @@ func (m *Model) OpenCommitDiff(sha, short, subject, path string) {
 	}
 	m.diffRows = AlignLines(string(baseRaw), string(newRaw))
 	m.diffTop = 0
+	m.jumpToHunkRow(FirstHunkRow(m.diffRows))
 	m.mode = ModeCommitDiff
 }
 
@@ -314,6 +331,7 @@ func (m *Model) loadSplit(relPath, working string) {
 	head, _ := git.HeadFile(m.repoRoot, relPath)
 	m.diffRows = AlignLines(head, working)
 	m.diffTop = 0
+	m.jumpToHunkRow(FirstHunkRow(m.diffRows))
 }
 
 func isChanged(s git.Status) bool {
@@ -429,12 +447,18 @@ func (m Model) handleKey(km tea.KeyMsg) (Model, tea.Cmd) {
 			m.view.StartSearch()
 		}
 	case "n":
-		if m.mode == ModeView {
+		switch m.mode { //nolint:exhaustive // other modes have no "next" semantics
+		case ModeView:
 			m.view.NextMatch()
+		case ModeSplit, ModeCommitDiff:
+			m.jumpToHunkRow(NextHunkRow(m.diffRows, HunkAnchor(m.diffRows, m.diffTop)))
 		}
 	case "N":
-		if m.mode == ModeView {
+		switch m.mode { //nolint:exhaustive // other modes have no "prev" semantics
+		case ModeView:
 			m.view.PrevMatch()
+		case ModeSplit, ModeCommitDiff:
+			m.jumpToHunkRow(PrevHunkRow(m.diffRows, HunkAnchor(m.diffRows, m.diffTop)))
 		}
 	case "i", "e":
 		if (m.mode == ModeView || m.mode == ModeSplit || m.mode == ModeBlame) && m.path != "" && m.commitSha == "" {

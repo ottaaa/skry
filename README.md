@@ -22,7 +22,8 @@ reviewing AI-generated code across multiple worktrees.
   parent dirs). Fuzzy-filter with `/`, flat-list of changed files with `t`.
 - **Right pane** adapts to the cursor:
   - File with changes → **SplitDiff** (HEAD vs working tree, aligned with
-    `go-diff`)
+    `go-diff`). Opens scrolled to the first hunk; `n` / `N` jump to the
+    next / previous hunk.
   - Unchanged file → **View** (chroma syntax highlight)
   - Folder → listing of immediate children with status markers
   - Toggle View ↔ SplitDiff with `d`

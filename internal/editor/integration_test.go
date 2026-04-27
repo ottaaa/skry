@@ -7,6 +7,8 @@ import (
 	"strings"
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/ottaaa/skry/internal/git"
 )
 
@@ -86,6 +88,73 @@ func TestEditorOpenThenGoToLineSplitDiff(t *testing.T) {
 	out := m.View()
 	if !strings.Contains(out, "MODIFIED line 100") {
 		t.Errorf("rendered SplitDiff should contain MODIFIED line 100, first 800 chars:\n%s", firstN(out, 800))
+	}
+}
+
+// TestOpenSplitDiffJumpsToFirstHunkAndCyclesHunks verifies that opening a
+// SplitDiff scrolls past leading equal context to the first hunk, and that
+// `n` / `N` advance / retreat between hunks.
+func TestOpenSplitDiffJumpsToFirstHunkAndCyclesHunks(t *testing.T) {
+	dir := t.TempDir()
+	rel := "big.txt"
+	abs := filepath.Join(dir, rel)
+	lines := makeNumberedLinesSlice(200)
+	if err := os.WriteFile(abs, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	ctx := t.Context()
+	run := func(args ...string) {
+		cmd := exec.CommandContext(ctx, "git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	run("add", rel)
+	run("commit", "-q", "-m", "init")
+
+	// Two well-separated hunks at lines 50 and 150.
+	lines[49] = "FIRST HUNK"
+	lines[149] = "SECOND HUNK"
+	if err := os.WriteFile(abs, []byte(strings.Join(lines, "\n")), 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	m := New(dir)
+	m.SetSize(80, 30)
+	if err := m.Open(rel, git.StatusModified); err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	if m.mode != ModeSplit {
+		t.Fatalf("expected ModeSplit, got %v", m.mode)
+	}
+
+	firstHunk := FirstHunkRow(m.diffRows)
+	if firstHunk < 0 {
+		t.Fatal("no hunk detected in diff rows")
+	}
+	if m.diffTop == 0 {
+		t.Errorf("Open should jump past leading context to the first hunk, but diffTop = 0 (firstHunk = %d)", firstHunk)
+	}
+	if m.diffTop > firstHunk {
+		t.Errorf("diffTop %d advanced past firstHunk %d (should keep hunk visible)", m.diffTop, firstHunk)
+	}
+
+	// Press `n` — should jump forward to the second hunk.
+	beforeNext := m.diffTop
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'n'}})
+	if m.diffTop <= beforeNext {
+		t.Errorf("`n` should advance to next hunk; diffTop %d -> %d", beforeNext, m.diffTop)
+	}
+
+	// Press `N` — should jump back to the first hunk.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'N'}})
+	if m.diffTop != beforeNext {
+		t.Errorf("`N` should return to first hunk position %d, got %d", beforeNext, m.diffTop)
 	}
 }
 
