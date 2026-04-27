@@ -19,6 +19,11 @@ func TestShouldSkip(t *testing.T) {
 		{"/repo/dist/app.js", true},
 		{"/repo/src/.git-like-but-not", false},
 		{"/repo/vendored", false},
+		{"/repo/.venv/lib/site-packages/foo.py", true},
+		{"/repo/venv/bin/python", true},
+		{"/repo/pkg/__pycache__/x.cpython-312.pyc", true},
+		{"/repo/.pytest_cache/v/cache/lastfailed", true},
+		{"/repo/.gradle/caches/x", true},
 	}
 	for _, c := range cases {
 		if got := shouldSkip(c.path); got != c.want {

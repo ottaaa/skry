@@ -35,6 +35,7 @@ Global
   b                     branch switch
   w                     worktree switch
   t                     toggle flat changed list
+  I                     toggle showing .gitignore'd files
   y                     copy current file path
   [ ]                   resize left pane
   ?                     this help

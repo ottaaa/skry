@@ -17,14 +17,22 @@ import (
 // Default directories skipped when walking the repo. `.git` is always skipped
 // by Start since it produces high-frequency noise (packed-objects writes,
 // index.lock churn). Heavy caches are skipped to avoid exhausting per-process
-// file watch limits on macOS.
+// file watch limits on macOS, and to keep the tree readable when the
+// "show ignored" toggle is on.
 var skipDirs = map[string]struct{}{
-	".git":         {},
-	"node_modules": {},
-	".next":        {},
-	"dist":         {},
-	"build":        {},
-	"target":       {},
+	".git":          {},
+	"node_modules":  {},
+	".next":         {},
+	"dist":          {},
+	"build":         {},
+	"target":        {},
+	".venv":         {},
+	"venv":          {},
+	"__pycache__":   {},
+	".pytest_cache": {},
+	".mypy_cache":   {},
+	".ruff_cache":   {},
+	".gradle":       {},
 }
 
 // Debounce window: AI agents write files in bursts. 250 ms keeps reloads
@@ -163,11 +171,17 @@ func addRecursive(fsw *fsnotify.Watcher, root string) error {
 // A new Create event inside a skipped dir can still reach us if the parent is
 // watched (fsnotify reports events at the parent's level), so we re-check.
 func shouldSkip(path string) bool {
+	return ShouldSkip(path)
+}
+
+// ShouldSkip reports whether path lives under one of the skip dirs (`.git/`,
+// `node_modules/`, `.venv/`, etc.). Used by the watcher to filter events and
+// by the app to filter the file tree when displaying ignored files.
+func ShouldSkip(path string) bool {
 	base := filepath.Base(path)
 	if _, skip := skipDirs[base]; skip {
 		return true
 	}
-	// Any segment of the path matching a skipDir name.
 	for p := path; p != "" && p != "/"; p = filepath.Dir(p) {
 		b := filepath.Base(p)
 		if _, skip := skipDirs[b]; skip {

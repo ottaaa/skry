@@ -53,6 +53,8 @@ reviewing AI-generated code across multiple worktrees.
   `node_modules` are ignored). Reload is suppressed while you are editing.
 - **Misc**
   - `y` — copy current file path to clipboard
+  - `I` — toggle showing `.gitignore`'d files (default off; heavy dirs like
+    `node_modules` / `.venv` / `__pycache__` stay hidden either way)
   - `[` / `]` — resize the left pane (`<` / `>` / `Alt+h` / `Alt+l` also work)
   - `Tab` / `←` / `→` — move focus between tree and right pane
   - `?` — help with all key bindings

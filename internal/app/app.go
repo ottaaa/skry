@@ -44,11 +44,12 @@ type Model struct {
 	editor editor.Model
 	modal  modal.Modal
 
-	files    []string
-	statuses map[string]git.Status
-	summary  summary
-	branch   string
-	recent   []string
+	files       []string
+	statuses    map[string]git.Status
+	summary     summary
+	branch      string
+	recent      []string
+	showIgnored bool // when true, gitignored files (filtered by skipDirs) are also listed
 
 	// Status bar state. setToast / toastExpiredMsg / renderToast live in
 	// toast.go; we just hold the current toast and a sequence counter
@@ -132,10 +133,31 @@ func waitForFS(w *watcher.Watcher) tea.Cmd {
 	}
 }
 
+// appendIgnored augments files with gitignored entries (excluding paths under
+// skipDirs like node_modules/, .venv/, etc.). The seen map is updated in place
+// so subsequent merges don't double-add. Returns the (possibly extended) slice.
+func appendIgnored(root string, files []string, seen map[string]bool) []string {
+	ignored, err := git.ListIgnoredFiles(root)
+	if err != nil {
+		return files
+	}
+	for _, p := range ignored {
+		if seen[p] {
+			continue
+		}
+		if watcher.ShouldSkip(p) {
+			continue
+		}
+		files = append(files, p)
+		seen[p] = true
+	}
+	return files
+}
+
 // fsReload is a lighter sibling of loadRepo: it refreshes the file list,
 // statuses, and branch, but leaves the editor's currently-open file in place
 // (loadRepo replaces the editor entirely, which would close the user's view).
-func fsReload(root string) tea.Cmd {
+func fsReload(root string, showIgnored bool) tea.Cmd {
 	return func() tea.Msg {
 		files, err := git.ListFiles(root)
 		if err != nil {
@@ -170,6 +192,9 @@ func fsReload(root string) tea.Cmd {
 				seen[e.Path] = true
 			}
 		}
+		if showIgnored {
+			files = appendIgnored(root, files, seen)
+		}
 		branch, _ := git.CurrentBranch(root)
 		return fsReloadedMsg{files: files, statuses: statuses, summary: sum, branch: branch}
 	}
@@ -203,7 +228,7 @@ func New(repoRoot string) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(loadRepo(m.repoRoot), startWatcher(m.repoRoot, m.log))
+	return tea.Batch(loadRepo(m.repoRoot, m.showIgnored), startWatcher(m.repoRoot, m.log))
 }
 
 type repoLoadedMsg struct {
@@ -215,7 +240,7 @@ type repoLoadedMsg struct {
 	err      error
 }
 
-func loadRepo(root string) tea.Cmd {
+func loadRepo(root string, showIgnored bool) tea.Cmd {
 	return func() tea.Msg {
 		top, err := git.TopLevel(root)
 		if err != nil {
@@ -254,6 +279,9 @@ func loadRepo(root string) tea.Cmd {
 				files = append(files, e.Path)
 				seen[e.Path] = true
 			}
+		}
+		if showIgnored {
+			files = appendIgnored(top, files, seen)
 		}
 		branch, _ := git.CurrentBranch(top)
 		return repoLoadedMsg{root: top, files: files, statuses: statuses, summary: sum, branch: branch}
@@ -388,7 +416,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fsChangedMsg:
 		// Coalesce any further events into the next refresh by issuing a
 		// single reload Cmd, then arm for the next watcher event.
-		return m, tea.Batch(fsReload(m.repoRoot), waitForFS(m.watcher))
+		return m, tea.Batch(fsReload(m.repoRoot, m.showIgnored), waitForFS(m.watcher))
 
 	case fileChangedMsg:
 		// Per-file fast path: just reload the editor's current buffer.
@@ -437,7 +465,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = m.fileWatcher.Close()
 			m.fileWatcher = nil
 		}
-		return m, tea.Batch(loadRepo(msg.Path), startWatcher(msg.Path, m.log))
+		return m, tea.Batch(loadRepo(msg.Path, m.showIgnored), startWatcher(msg.Path, m.log))
 
 	case toastExpiredMsg:
 		// Stale ticks (a newer toast bumped seq) are silently ignored —
@@ -522,7 +550,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.setToast("switch: "+msg.err.Error(), ToastError)
 		}
 		return m, tea.Batch(
-			loadRepo(m.repoRoot),
+			loadRepo(m.repoRoot, m.showIgnored),
 			m.setToast("switched to "+msg.name, ToastSuccess),
 		)
 
@@ -687,6 +715,16 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 			return m, loadLog(m.repoRoot)
 		case "b":
 			return m, loadBranches(m.repoRoot)
+		case "I":
+			m.showIgnored = !m.showIgnored
+			tag := "off"
+			if m.showIgnored {
+				tag = "on"
+			}
+			return m, tea.Batch(
+				fsReload(m.repoRoot, m.showIgnored),
+				m.setToast("show ignored: "+tag, ToastInfo),
+			)
 		}
 	}
 
@@ -966,7 +1004,7 @@ func (m Model) renderHeader() string {
 }
 
 func (m Model) renderFooter() string {
-	hint := "q quit  Tab/←/→ pane  p file  r recent  F grep  L log  b branch  w worktree  B blame  t flat  d diff  / find  y copy  i edit  ? help"
+	hint := "q quit  Tab/←/→ pane  p file  r recent  F grep  L log  b branch  w worktree  B blame  t flat  I ignored  d diff  / find  y copy  i edit  ? help"
 	// While a toast is active it owns the left segment and the hint is
 	// pushed to the right (or trimmed first when space is tight). This
 	// matches the convention from glow's pager footer.
