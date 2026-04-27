@@ -25,20 +25,27 @@ type CursorMovedMsg struct {
 	IsDir bool
 }
 
-// LogCommitSelectedMsg is emitted when a commit is picked from the log modal.
-type LogCommitSelectedMsg struct {
+// LogCommitFocusedMsg fires from the LogView's Graph pane whenever the
+// highlighted commit changes. The app responds by loading that commit's
+// file list into the Files pane.
+type LogCommitFocusedMsg struct {
 	Sha     string
 	Short   string
 	Subject string
 }
 
-// CommitFileSelectedMsg is emitted when a file is picked inside a commit.
-type CommitFileSelectedMsg struct {
+// LogFileFocusedMsg fires from the LogView's Files pane whenever the
+// highlighted file changes. The app responds by rendering that commit/file
+// pair as a SplitDiff in the editor pane.
+type LogFileFocusedMsg struct {
 	Sha     string
 	Short   string
 	Subject string
 	Path    string
 }
+
+// LogExitMsg asks the app to leave Log mode and restore the normal layout.
+type LogExitMsg struct{}
 
 // SwitchBranchMsg asks the app to run `git switch`. If Force is true, uses
 // --discard-changes.

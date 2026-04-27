@@ -42,8 +42,12 @@ reviewing AI-generated code across multiple worktrees.
     a bottom pane. `PgUp` / `PgDn` (or `Alt+k` / `Alt+j`) scroll the preview;
     `Alt+↑` / `Alt+↓` shrink / grow the preview pane.
 - **Git**
-  - `L` — commit history for the current branch. Pick a commit → file list →
-    SplitDiff (parent vs commit) for any file
+  - `L` — enter **Log mode**: a 3-pane view showing the branch graph
+    (`git log --graph HEAD`, newest first) on the left, the focused commit's
+    metadata + changed files in the middle, and the parent-vs-commit
+    SplitDiff on the right. `Tab` / `←` / `→` move focus between panes;
+    moving the cursor in the graph updates the file list, moving the cursor
+    in the file list updates the diff. `Esc` / `q` returns to normal layout.
   - `B` — `git blame` the current file in the right pane
   - `b` — switch branches. Asks for confirmation (`--discard-changes`) when
     the working tree is dirty

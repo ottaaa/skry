@@ -95,7 +95,9 @@ make clean                                # bin/ coverage.* dist/
 - `internal/modal/modal.go` — Modal インターフェース (`Init/Update/View`)
 - `internal/branchui/branchui.go` — ブランチ切替 (`b`)。dirty 時は確認ダイアログ
 - `internal/worktreeui/worktreeui.go` — worktree 切替 (`w`)
-- `internal/logui/logui.go` — `git log` 一覧 (`L`) と commit 内 file picker
+- `internal/logview/logview.go` — `L` で入る Log モードの常設 2 ペイン
+  (左: `git log --graph HEAD` のグラフ＋ログ、中: 選択コミットの header と
+  変更ファイル一覧)。エディタペインは `ModeCommitDiff` 固定で右側に出る
 - `internal/helpui/helpui.go` — キーバインド一覧 (`?`)
 - `internal/search/file.go` — ファイル名 fuzzy 検索 (`p`) / recent (`r`)
 - `internal/search/content.go` — プロジェクト grep (`F`)。ripgrep 優先、無ければ Go fallback

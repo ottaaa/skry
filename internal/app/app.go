@@ -17,7 +17,7 @@ import (
 	"github.com/ottaaa/skry/internal/events"
 	"github.com/ottaaa/skry/internal/git"
 	"github.com/ottaaa/skry/internal/helpui"
-	"github.com/ottaaa/skry/internal/logui"
+	"github.com/ottaaa/skry/internal/logview"
 	"github.com/ottaaa/skry/internal/modal"
 	"github.com/ottaaa/skry/internal/search"
 	"github.com/ottaaa/skry/internal/tree"
@@ -30,6 +30,20 @@ type Focus int
 const (
 	FocusTree Focus = iota
 	FocusEditor
+	// FocusLogGraph / FocusLogFiles are only reachable while appMode == AppModeLog.
+	FocusLogGraph
+	FocusLogFiles
+)
+
+// AppMode is the top-level layout mode of the app. Most of the time we sit
+// in AppModeNormal (the tree + editor split). Pressing `L` enters Log mode,
+// which replaces the tree pane with the two-column logview (graph + files)
+// and pins the editor to ModeCommitDiff. Esc / q returns to Normal.
+type AppMode int
+
+const (
+	AppModeNormal AppMode = iota
+	AppModeLog
 )
 
 const treeWidthMin = 24
@@ -39,10 +53,12 @@ type Model struct {
 	width    int
 	height   int
 	focus    Focus
+	appMode  AppMode
 
-	tree   tree.Model
-	editor editor.Model
-	modal  modal.Modal
+	tree    tree.Model
+	editor  editor.Model
+	modal   modal.Modal
+	logView logview.Model
 
 	scopeDir    string // relative subdir under repoRoot to scope the tree to ("" = whole repo)
 	files       []string
@@ -379,14 +395,14 @@ type statusRefreshedMsg struct {
 }
 
 type logLoadedMsg struct {
-	commits []git.Commit
-	err     error
+	rows []git.GraphRow
+	err  error
 }
 
 func loadLog(root string) tea.Cmd {
 	return func() tea.Msg {
-		commits, err := git.Log(root, 200)
-		return logLoadedMsg{commits: commits, err: err}
+		rows, err := git.LogGraph(root, 500)
+		return logLoadedMsg{rows: rows, err: err}
 	}
 }
 
@@ -567,11 +583,24 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.err != nil {
 			return m, m.setToast("log: "+msg.err.Error(), ToastError)
 		}
-		if len(msg.commits) == 0 {
+		hasCommit := false
+		for _, r := range msg.rows {
+			if r.Commit != nil {
+				hasCommit = true
+				break
+			}
+		}
+		if !hasCommit {
 			return m, m.setToast("no commits yet", ToastInfo)
 		}
-		m.modal = logui.NewLogModal(msg.commits)
-		return m, m.modal.Init()
+		m.appMode = AppModeLog
+		m.logView = logview.New(msg.rows)
+		m.logView.SetFocus(logview.FocusGraph)
+		m.focus = FocusLogGraph
+		m.tree.SetFocused(false)
+		m.editor.SetFocused(false)
+		m.applySizes()
+		return m, m.logView.EmitInitialFocus()
 
 	case branchesLoadedMsg:
 		if msg.err != nil {
@@ -583,26 +612,25 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.modal = branchui.New(msg.branches, msg.dirty)
 		return m, m.modal.Init()
 
-	case events.LogCommitSelectedMsg:
-		files, err := git.CommitFiles(m.repoRoot, msg.Sha)
+	case events.LogCommitFocusedMsg:
+		// Per-commit fetch (synchronous git calls; usually <10ms). The body
+		// + name-status pair updates the middle pane immediately.
+		entries, err := git.ShowNameStatus(m.repoRoot, msg.Sha)
 		if err != nil {
-			m.modal = nil
 			return m, m.setToast("commit files: "+err.Error(), ToastError)
 		}
-		if len(files) == 0 {
-			m.modal = nil
-			return m, m.setToast("commit has no file changes", ToastInfo)
-		}
-		m.modal = logui.NewCommitFilesModal(msg.Sha, msg.Short, msg.Subject, files)
-		return m, m.modal.Init()
+		body, _ := git.CommitMessage(m.repoRoot, msg.Sha)
+		m.logView.SetFiles(msg.Sha, entries, body)
+		// Auto-render the first file's diff in the editor pane so the user
+		// sees something useful without having to step into the files pane.
+		return m, m.logView.EmitCurrentFileFocus()
 
-	case events.CommitFileSelectedMsg:
-		m.modal = nil
+	case events.LogFileFocusedMsg:
 		m.editor.OpenCommitDiff(msg.Sha, msg.Short, msg.Subject, msg.Path)
-		m.focus = FocusEditor
-		m.tree.SetFocused(false)
-		m.editor.SetFocused(true)
 		return m, nil
+
+	case events.LogExitMsg:
+		return m.exitLogMode(), nil
 
 	case events.SwitchBranchMsg:
 		m.modal = nil
@@ -710,13 +738,35 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 		return m, cmd
 	}
 
-	// q quits only when we aren't absorbing text input.
+	// Log-mode keys run *before* the q-quits-app check so `q` exits Log
+	// mode (returning to Normal) rather than quitting the whole app.
+	if m.appMode == AppModeLog && !m.absorbingText() {
+		switch s {
+		case "tab":
+			m.cycleLogFocus(+1)
+			return m, nil
+		case "shift+tab":
+			m.cycleLogFocus(-1)
+			return m, nil
+		case "left":
+			m.setLogFocus(prevLogFocus(m.focus))
+			return m, nil
+		case "right":
+			m.setLogFocus(nextLogFocus(m.focus))
+			return m, nil
+		case "esc", "q":
+			return m.exitLogMode(), nil
+		}
+	}
+
+	// q quits only when we aren't absorbing text input. (Log mode handled
+	// above; here we are guaranteed to be in AppModeNormal.)
 	if s == "q" && !m.absorbingText() {
 		return m, tea.Quit
 	}
 
 	// Global navigation / modal openers only when we aren't in text-entry contexts.
-	if !m.absorbingText() {
+	if !m.absorbingText() && m.appMode == AppModeNormal {
 		switch s {
 		case "tab":
 			if m.focus == FocusTree {
@@ -815,8 +865,77 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 		newEd, cmd := m.editor.Update(km)
 		m.editor = newEd
 		return m, cmd
+	case FocusLogGraph, FocusLogFiles:
+		newLV, cmd := m.logView.Update(km)
+		m.logView = newLV
+		return m, cmd
 	}
 	return m, nil
+}
+
+// cycleLogFocus walks Graph → Files → Editor → Graph (or in reverse).
+func (m *Model) cycleLogFocus(dir int) {
+	order := []Focus{FocusLogGraph, FocusLogFiles, FocusEditor}
+	cur := 0
+	for i, f := range order {
+		if f == m.focus {
+			cur = i
+			break
+		}
+	}
+	cur = (cur + dir + len(order)) % len(order)
+	m.setLogFocus(order[cur])
+}
+
+func nextLogFocus(f Focus) Focus {
+	switch f {
+	case FocusLogGraph:
+		return FocusLogFiles
+	case FocusLogFiles:
+		return FocusEditor
+	case FocusEditor:
+		return FocusEditor // already rightmost
+	}
+	return FocusLogGraph
+}
+
+func prevLogFocus(f Focus) Focus {
+	switch f {
+	case FocusEditor:
+		return FocusLogFiles
+	case FocusLogFiles:
+		return FocusLogGraph
+	case FocusLogGraph:
+		return FocusLogGraph // already leftmost
+	}
+	return FocusLogGraph
+}
+
+func (m *Model) setLogFocus(f Focus) {
+	m.focus = f
+	m.tree.SetFocused(false)
+	switch f { //nolint:exhaustive // Tree focus is unreachable in Log mode
+	case FocusLogGraph:
+		m.logView.SetFocus(logview.FocusGraph)
+		m.editor.SetFocused(false)
+	case FocusLogFiles:
+		m.logView.SetFocus(logview.FocusFiles)
+		m.editor.SetFocused(false)
+	case FocusEditor:
+		m.editor.SetFocused(true)
+	}
+}
+
+// exitLogMode restores the Normal layout. It does NOT reset the editor's
+// open file — the user might want to keep looking at the last commit's
+// diff. The next file open from the tree will replace it.
+func (m Model) exitLogMode() Model {
+	m.appMode = AppModeNormal
+	m.focus = FocusTree
+	m.tree.SetFocused(true)
+	m.editor.SetFocused(false)
+	m.applySizes()
+	return m
 }
 
 func (m *Model) previewAt(msg events.CursorMovedMsg) {
@@ -911,6 +1030,36 @@ func (m *Model) applySizes() {
 	headerH := 1
 	footerH := 1
 	bodyH := max(m.height-headerH-footerH, 3)
+	innerH := bodyH - 2
+	if innerH < 1 {
+		innerH = 1
+	}
+
+	if m.appMode == AppModeLog {
+		// 3-pane layout: graph + files + editor. Graph and files share the
+		// space the tree pane normally has, plus a chunk so the file list
+		// has breathing room.
+		graphOuter := clampTreeOuter(m.width*3/10, m.width)
+		filesOuter := clampTreeOuter(m.width*3/10, m.width)
+		editorOuter := m.width - graphOuter - filesOuter
+		if editorOuter < 30 {
+			// Squeeze the two left panes proportionally if the terminal is narrow.
+			editorOuter = 30
+			rest := m.width - editorOuter
+			if rest < treeWidthMin*2 {
+				rest = treeWidthMin * 2
+			}
+			graphOuter = rest / 2
+			filesOuter = rest - graphOuter
+		}
+		graphInner := max(graphOuter-2, 4)
+		filesInner := max(filesOuter-2, 4)
+		editorInner := max(editorOuter-2, 4)
+		m.logView.SetSize(graphInner, filesInner, innerH)
+		m.editor.SetSize(editorInner, innerH)
+		return
+	}
+
 	if m.treeOuter == 0 {
 		m.treeOuter = m.width / 6
 	}
@@ -918,15 +1067,11 @@ func (m *Model) applySizes() {
 	editorOuter := m.width - m.treeOuter
 	treeInner := m.treeOuter - 2
 	editorInner := editorOuter - 2
-	innerH := bodyH - 2
 	if treeInner < 4 {
 		treeInner = 4
 	}
 	if editorInner < 4 {
 		editorInner = 4
-	}
-	if innerH < 1 {
-		innerH = 1
 	}
 	m.tree.SetSize(treeInner, innerH)
 	m.editor.SetSize(editorInner, innerH)
@@ -1081,6 +1226,9 @@ func (m Model) renderHeader() string {
 
 func (m Model) renderFooter() string {
 	hint := "q quit  Tab/←/→ pane  p file  r recent  F grep  L log  b branch  w worktree  B blame  t flat  I ignored  d diff  / find  y copy  i edit  ? help"
+	if m.appMode == AppModeLog {
+		hint = "Esc/q exit log  Tab/←/→ pane  k/j cursor  g/G top/bottom  ? help"
+	}
 	// While a toast is active it owns the left segment and the hint is
 	// pushed to the right (or trimmed first when space is tight). This
 	// matches the convention from glow's pager footer.
@@ -1096,13 +1244,44 @@ func (m Model) renderFooter() string {
 }
 
 func (m Model) renderBody() string {
+	bodyH := m.height - 2
+
+	if m.appMode == AppModeLog {
+		graphOuter := clampTreeOuter(m.width*3/10, m.width)
+		filesOuter := clampTreeOuter(m.width*3/10, m.width)
+		editorOuter := m.width - graphOuter - filesOuter
+		if editorOuter < 30 {
+			editorOuter = 30
+			rest := m.width - editorOuter
+			if rest < treeWidthMin*2 {
+				rest = treeWidthMin * 2
+			}
+			graphOuter = rest / 2
+			filesOuter = rest - graphOuter
+		}
+		graphStyle := PaneStyle
+		filesStyle := PaneStyle
+		editorStyle := PaneStyle
+		switch m.focus { //nolint:exhaustive
+		case FocusLogGraph:
+			graphStyle = ActivePane
+		case FocusLogFiles:
+			filesStyle = ActivePane
+		case FocusEditor:
+			editorStyle = ActivePane
+		}
+		left := graphStyle.Width(graphOuter - 2).Height(bodyH - 2).Render(m.logView.LeftView())
+		mid := filesStyle.Width(filesOuter - 2).Height(bodyH - 2).Render(m.logView.RightView())
+		right := editorStyle.Width(editorOuter - 2).Height(bodyH - 2).Render(m.editor.View())
+		return lipgloss.JoinHorizontal(lipgloss.Top, left, mid, right)
+	}
+
 	treeOuterW := m.treeOuter
 	if treeOuterW == 0 {
 		treeOuterW = m.width / 6
 	}
 	treeOuterW = clampTreeOuter(treeOuterW, m.width)
 	editorOuterW := m.width - treeOuterW
-	bodyH := m.height - 2
 
 	treeStyle := PaneStyle
 	editorStyle := PaneStyle

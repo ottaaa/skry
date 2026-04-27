@@ -31,7 +31,7 @@ Global
   p                     file search palette
   r                     recent files
   F                     project grep
-  L                     commit history (log)
+  L                     commit history (log mode)
   b                     branch switch
   w                     worktree switch
   t                     toggle flat changed list
@@ -70,7 +70,14 @@ Edit mode (autosaves 1.5s after each edit)
 Search modals (p / r / F) preview pane
   PgUp / PgDn           scroll preview
   Alt+j / Alt+k         scroll preview down / up
-  Alt+↑ / Alt+↓         shrink / grow preview pane`
+  Alt+↑ / Alt+↓         shrink / grow preview pane
+
+Log mode (entered with L)
+  ↑ / ↓ or k / j        navigate within the focused pane
+  g / G                 first / last
+  Tab / Shift+Tab       cycle Graph → Files → Diff → Graph
+  ← / →                 move focus left / right between panes
+  Esc / q               leave log mode (return to file tree)`
 
 func (m *Modal) View(width, height int) string {
 	w := max(width-8, 60)
