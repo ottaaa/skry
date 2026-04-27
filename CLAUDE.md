@@ -98,6 +98,10 @@ make clean                                # bin/ coverage.* dist/
 - `internal/logview/logview.go` — `L` で入る Log モードの常設 2 ペイン
   (左: `git log --graph HEAD` のグラフ＋ログ、中: 選択コミットの header と
   変更ファイル一覧)。エディタペインは `ModeCommitDiff` 固定で右側に出る
+- `internal/logfetch/` — Log モードの I/O + キャッシュ層。
+  LRU(meta + diff rows) + singleflight + seq ベースの cancellation +
+  bounded prefetch worker pool。`tea.Cmd` で結果を `MetaArrivedMsg` /
+  `DiffArrivedMsg` として返し、Bubble Tea の純粋更新を保つ
 - `internal/helpui/helpui.go` — キーバインド一覧 (`?`)
 - `internal/search/file.go` — ファイル名 fuzzy 検索 (`p`) / recent (`r`)
 - `internal/search/content.go` — プロジェクト grep (`F`)。ripgrep 優先、無ければ Go fallback

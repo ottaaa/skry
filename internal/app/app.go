@@ -17,6 +17,7 @@ import (
 	"github.com/ottaaa/skry/internal/events"
 	"github.com/ottaaa/skry/internal/git"
 	"github.com/ottaaa/skry/internal/helpui"
+	"github.com/ottaaa/skry/internal/logfetch"
 	"github.com/ottaaa/skry/internal/logview"
 	"github.com/ottaaa/skry/internal/modal"
 	"github.com/ottaaa/skry/internal/search"
@@ -55,10 +56,16 @@ type Model struct {
 	focus    Focus
 	appMode  AppMode
 
-	tree    tree.Model
-	editor  editor.Model
-	modal   modal.Modal
-	logView logview.Model
+	tree     tree.Model
+	editor   editor.Model
+	modal    modal.Modal
+	logView  logview.Model
+	logFetch *logfetch.Fetcher
+	// logSeq is bumped every time the user changes commit or file focus in
+	// Log mode. Arrived messages tagged with an older Seq are silently
+	// dropped — this is the cancellation invariant that lets prefetch +
+	// foreground requests coexist without races.
+	logSeq uint64
 
 	scopeDir    string // relative subdir under repoRoot to scope the tree to ("" = whole repo)
 	files       []string
@@ -461,6 +468,15 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.branch = msg.branch
 		m.editor = editor.New(msg.root)
 		m.editor.SetFocused(m.focus == FocusEditor)
+		// (Re-)create the Log-mode fetcher rooted at the new repo. A worktree
+		// switch lands here too, so a stale cache from the previous toplevel
+		// is dropped automatically.
+		if m.logFetch != nil {
+			m.logFetch.Reset(msg.root)
+		} else {
+			m.logFetch = logfetch.New(msg.root)
+			m.logFetch.Start()
+		}
 		m.applySizes()
 		m.tree.SetFiles(msg.files, msg.statuses)
 		m.previewAt(m.tree.CurrentMsg())
@@ -581,6 +597,11 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	case logLoadedMsg:
 		if msg.err != nil {
+			// If the user already entered Log mode (we did so optimistically
+			// on `L` press), pop back out so they don't sit on a blank pane.
+			if m.appMode == AppModeLog {
+				m = m.exitLogMode()
+			}
 			return m, m.setToast("log: "+msg.err.Error(), ToastError)
 		}
 		hasCommit := false
@@ -591,15 +612,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 		if !hasCommit {
+			if m.appMode == AppModeLog {
+				m = m.exitLogMode()
+			}
 			return m, m.setToast("no commits yet", ToastInfo)
 		}
-		m.appMode = AppModeLog
-		m.logView = logview.New(msg.rows)
-		m.logView.SetFocus(logview.FocusGraph)
-		m.focus = FocusLogGraph
-		m.tree.SetFocused(false)
-		m.editor.SetFocused(false)
-		m.applySizes()
+		m.logView.SetRows(msg.rows)
 		return m, m.logView.EmitInitialFocus()
 
 	case branchesLoadedMsg:
@@ -613,20 +631,49 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, m.modal.Init()
 
 	case events.LogCommitFocusedMsg:
-		// Per-commit fetch (synchronous git calls; usually <10ms). The body
-		// + name-status pair updates the middle pane immediately.
-		entries, err := git.ShowNameStatus(m.repoRoot, msg.Sha)
-		if err != nil {
-			return m, m.setToast("commit files: "+err.Error(), ToastError)
+		// Bump seq, fire async fetch through the cached fetcher, and
+		// schedule prefetch of neighboring commits. Foreground & prefetch
+		// share singleflight, so this never duplicates git work.
+		m.logSeq++
+		seq := m.logSeq
+		cmd := m.logFetch.Meta(msg.Sha, seq)
+		m.logFetch.Prefetch(m.logView.NeighborShas(2))
+		return m, cmd
+
+	case logfetch.MetaArrivedMsg:
+		if msg.Seq < m.logSeq {
+			return m, nil // stale; user already moved on
 		}
-		body, _ := git.CommitMessage(m.repoRoot, msg.Sha)
-		m.logView.SetFiles(msg.Sha, entries, body)
-		// Auto-render the first file's diff in the editor pane so the user
-		// sees something useful without having to step into the files pane.
+		if msg.Err != nil {
+			return m, m.setToast("commit files: "+msg.Err.Error(), ToastError)
+		}
+		m.logView.SetFiles(msg.Sha, msg.Files, msg.Body)
+		// Warm the diff cache for the focused commit's first file so the
+		// editor pane lights up immediately when SetFiles emits the
+		// follow-up file-focus event.
+		if len(msg.Files) > 0 {
+			m.logFetch.PrefetchDiff(msg.Sha, msg.Files[0].Path)
+		}
 		return m, m.logView.EmitCurrentFileFocus()
 
 	case events.LogFileFocusedMsg:
-		m.editor.OpenCommitDiff(msg.Sha, msg.Short, msg.Subject, msg.Path)
+		m.logSeq++
+		seq := m.logSeq
+		return m, m.logFetch.Diff(msg.Sha, msg.Path, seq)
+
+	case logfetch.DiffArrivedMsg:
+		if msg.Seq < m.logSeq {
+			return m, nil
+		}
+		if msg.Err != nil {
+			return m, m.setToast("commit diff: "+msg.Err.Error(), ToastError)
+		}
+		c := m.logView.SelectedCommit()
+		short, subject := "", ""
+		if c != nil {
+			short, subject = c.Short, c.Subject
+		}
+		m.editor.SetCommitDiff(msg.Sha, short, subject, msg.Path, msg.Rows, msg.Binary)
 		return m, nil
 
 	case events.LogExitMsg:
@@ -829,6 +876,16 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.modal = helpui.New()
 			return m, m.modal.Init()
 		case "L":
+			// Switch layout immediately, then load the graph in the
+			// background. The user sees the new pane structure with a
+			// "loading…" placeholder while git log --graph runs.
+			m.appMode = AppModeLog
+			m.logView = logview.New(nil)
+			m.logView.SetFocus(logview.FocusGraph)
+			m.focus = FocusLogGraph
+			m.tree.SetFocused(false)
+			m.editor.SetFocused(false)
+			m.applySizes()
 			return m, loadLog(m.repoRoot)
 		case "b":
 			return m, loadBranches(m.repoRoot)

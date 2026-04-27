@@ -114,6 +114,45 @@ func TestEmitInitialFocusReturnsCommitMsg(t *testing.T) {
 	}
 }
 
+func TestNeighborShasReturnsSurroundingCommits(t *testing.T) {
+	rows := sampleRows()
+	m := New(rows)
+	// Cursor on first commit (a1). Neighbors n=2 should give the two
+	// commits below: b2, c3 (no commits above).
+	got := m.NeighborShas(2)
+	want := map[string]bool{"bbb2": true, "ccc3": true}
+	if len(got) != len(want) {
+		t.Fatalf("NeighborShas(2) at top: got %v, want %v", got, want)
+	}
+	for _, sha := range got {
+		if !want[sha] {
+			t.Errorf("unexpected sha %q in neighbors", sha)
+		}
+	}
+}
+
+func TestSetRowsResetsCursor(t *testing.T) {
+	m := New(sampleRows())
+	// Move down twice.
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	m, _ = m.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'j'}})
+	if c := m.SelectedCommit(); c == nil || c.Short != "c3" {
+		t.Fatalf("setup: expected c3, got %#v", c)
+	}
+	// Replace rows — cursor must reset.
+	m.SetRows(sampleRows()[:1]) // just the first commit
+	if c := m.SelectedCommit(); c == nil || c.Short != "a1" {
+		t.Errorf("after SetRows: expected a1, got %#v", c)
+	}
+}
+
+func TestNeighborShasEmpty(t *testing.T) {
+	m := New(nil)
+	if got := m.NeighborShas(2); len(got) != 0 {
+		t.Errorf("NeighborShas on empty: got %v, want []", got)
+	}
+}
+
 func TestRenderProducesNoEmptyOutput(t *testing.T) {
 	m := New(sampleRows())
 	m.SetSize(30, 30, 10)

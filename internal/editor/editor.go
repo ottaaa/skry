@@ -203,6 +203,33 @@ func isNewFile(s git.Status) bool {
 	return s == git.StatusAdded || s == git.StatusUntracked
 }
 
+// SetCommitDiff installs a pre-computed parent-vs-commit diff into the
+// editor pane. Used by Log mode's caching fetcher: the rows have already
+// been built (and cached) outside the editor, so we just adopt them.
+//
+// When binary is true, rows is ignored and the pane shows a binary
+// placeholder. Files==nil with !binary is also valid (renders an empty
+// SplitDiff for an unchanged file at this commit).
+func (m *Model) SetCommitDiff(sha, short, subject, path string, rows []DiffRow, binary bool) {
+	m.path = path
+	m.absPath = filepath.Join(m.repoRoot, path)
+	m.commitSha = sha
+	m.commitShort = short
+	m.commitSubject = subject
+	m.status = ""
+	m.message = ""
+	m.loadErr = ""
+	if binary {
+		m.binarySize = 0
+		m.mode = ModeBinary
+		return
+	}
+	m.diffRows = rows
+	m.diffTop = 0
+	m.jumpToHunkRow(FirstHunkRow(m.diffRows))
+	m.mode = ModeCommitDiff
+}
+
 // OpenCommitDiff renders the parent-vs-commit diff for a single file. If the
 // commit has no parent (root commit), base content is treated as empty.
 func (m *Model) OpenCommitDiff(sha, short, subject, path string) {

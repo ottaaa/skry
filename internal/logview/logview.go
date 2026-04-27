@@ -51,14 +51,49 @@ type Model struct {
 // rows contains no commits the model is still safe to use — it will simply
 // render empty.
 func New(rows []git.GraphRow) Model {
-	m := Model{rows: rows}
+	m := Model{}
+	m.SetRows(rows)
+	m.focus = FocusGraph
+	return m
+}
+
+// SetRows replaces the graph rows in place — used when L flips the layout
+// immediately and the actual `git log --graph` result arrives later. The
+// cursor resets to the newest commit.
+func (m *Model) SetRows(rows []git.GraphRow) {
+	m.rows = rows
+	m.commits = m.commits[:0]
 	for i, r := range rows {
 		if r.Commit != nil {
 			m.commits = append(m.commits, i)
 		}
 	}
-	m.focus = FocusGraph
-	return m
+	m.cursor = 0
+	m.top = 0
+	m.files = nil
+	m.body = ""
+	m.fileCur = 0
+	m.fileTop = 0
+}
+
+// NeighborShas returns up to n commit SHAs before and after the cursor
+// (inclusive of the immediate next/prev), capped at boundary edges. Used
+// to drive prefetch of likely-next-targets without duplicating the
+// foreground request.
+func (m Model) NeighborShas(n int) []string {
+	if n <= 0 || len(m.commits) == 0 {
+		return nil
+	}
+	out := make([]string, 0, 2*n)
+	for d := 1; d <= n; d++ {
+		if i := m.cursor + d; i < len(m.commits) {
+			out = append(out, m.rows[m.commits[i]].Commit.Hash)
+		}
+		if i := m.cursor - d; i >= 0 {
+			out = append(out, m.rows[m.commits[i]].Commit.Hash)
+		}
+	}
+	return out
 }
 
 // SetSize tells the model how much horizontal/vertical space each pane has.
@@ -241,6 +276,21 @@ func (m Model) RightView() string { return m.renderFiles() }
 func (m Model) renderGraph() string {
 	w := max(m.width, 10)
 	h := max(m.height, 1)
+	if len(m.rows) == 0 {
+		// Layout already switched but `git log --graph` hasn't returned yet.
+		hint := lipgloss.NewStyle().Faint(true).Render("loading commit graph…")
+		var lines []string
+		// Center the hint vertically.
+		pad := h / 2
+		for range pad {
+			lines = append(lines, strings.Repeat(" ", w))
+		}
+		lines = append(lines, padOrTruncate(hint, w))
+		for len(lines) < h {
+			lines = append(lines, strings.Repeat(" ", w))
+		}
+		return strings.Join(lines[:h], "\n")
+	}
 	// Map cursor (commits[]) to row index, then keep that row visible.
 	cursorRow := 0
 	if len(m.commits) > 0 {

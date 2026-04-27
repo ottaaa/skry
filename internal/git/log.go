@@ -176,6 +176,62 @@ func FileAtBytes(dir, rev, path string) ([]byte, error) {
 	return out, nil
 }
 
+// ShowMetaCombined returns (body, name-status entries) for sha in a single
+// `git show` invocation. Cuts one fork/exec compared to calling
+// CommitMessage + ShowNameStatus separately.
+//
+// Output format: --format=%B%x00 prints the body followed by a NUL byte,
+// then `--name-status` follows on subsequent lines. The body itself can
+// contain newlines, so we split on the first NUL.
+func ShowMetaCombined(dir, sha string) (body string, entries []StatusEntry, err error) {
+	out, err := run(context.Background(), dir, "show", "--name-status", "--format=%B%x00", sha)
+	if err != nil {
+		return "", nil, err
+	}
+	idx := strings.IndexByte(out, 0)
+	if idx < 0 {
+		// No NUL — git produced an empty body or unexpected format. Treat the
+		// whole thing as name-status with an empty body.
+		return "", parseNameStatusBlock(out), nil
+	}
+	body = strings.TrimRight(out[:idx], "\n")
+	entries = parseNameStatusBlock(out[idx+1:])
+	return body, entries, nil
+}
+
+func parseNameStatusBlock(block string) []StatusEntry {
+	var entries []StatusEntry
+	for line := range strings.SplitSeq(block, "\n") {
+		line = strings.TrimRight(line, "\r")
+		if line == "" {
+			continue
+		}
+		fields := strings.Split(line, "\t")
+		if len(fields) < 2 {
+			continue
+		}
+		code := fields[0]
+		path := fields[len(fields)-1]
+		var st Status
+		switch code[0] {
+		case 'M':
+			st = StatusModified
+		case 'A':
+			st = StatusAdded
+		case 'D':
+			st = StatusDeleted
+		case 'R':
+			st = StatusRenamed
+		case 'C':
+			st = StatusRenamed
+		default:
+			continue
+		}
+		entries = append(entries, StatusEntry{Path: path, Status: st})
+	}
+	return entries
+}
+
 // CommitMessage returns the full commit message body for `sha` — subject
 // (first line) plus the rest of the body, exactly as git stores it.
 func CommitMessage(dir, sha string) (string, error) {
@@ -195,36 +251,7 @@ func ShowNameStatus(dir, sha string) ([]StatusEntry, error) {
 	if err != nil {
 		return nil, err
 	}
-	var entries []StatusEntry
-	for line := range strings.SplitSeq(out, "\n") {
-		line = strings.TrimRight(line, "\r")
-		if line == "" {
-			continue
-		}
-		fields := strings.Split(line, "\t")
-		if len(fields) < 2 {
-			continue
-		}
-		code := fields[0]
-		path := fields[len(fields)-1] // R/C have 3 fields: code, old, new
-		var st Status
-		switch code[0] {
-		case 'M':
-			st = StatusModified
-		case 'A':
-			st = StatusAdded
-		case 'D':
-			st = StatusDeleted
-		case 'R':
-			st = StatusRenamed
-		case 'C':
-			st = StatusRenamed // copy: treat like rename for display purposes
-		default:
-			continue
-		}
-		entries = append(entries, StatusEntry{Path: path, Status: st})
-	}
-	return entries, nil
+	return parseNameStatusBlock(out), nil
 }
 
 // ParentOf returns the first-parent SHA of rev, or empty string if rev is a

@@ -147,6 +147,59 @@ func TestShowNameStatusAndLogGraphLive(t *testing.T) {
 	}
 }
 
+func TestShowMetaCombinedReturnsBodyAndStatus(t *testing.T) {
+	dir := t.TempDir()
+	run := func(args ...string) {
+		cmd := exec.CommandContext(t.Context(), "git", args...)
+		cmd.Dir = dir
+		cmd.Env = append(os.Environ(),
+			"GIT_AUTHOR_NAME=t", "GIT_AUTHOR_EMAIL=t@t",
+			"GIT_COMMITTER_NAME=t", "GIT_COMMITTER_EMAIL=t@t")
+		if out, err := cmd.CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write := func(p, body string) {
+		if err := os.WriteFile(filepath.Join(dir, p), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	run("init", "-q", "-b", "main")
+	write("a.txt", "one\n")
+	run("add", "-A")
+	run("commit", "-q", "-m", "first commit\n\nWith a multi-paragraph\n\nbody.")
+	write("a.txt", "two\n")
+	write("b.txt", "new\n")
+	run("add", "-A")
+	run("commit", "-q", "-m", "second\n\nadds b")
+
+	body, entries, err := ShowMetaCombined(dir, "HEAD")
+	if err != nil {
+		t.Fatalf("ShowMetaCombined: %v", err)
+	}
+	if body != "second\n\nadds b" {
+		t.Errorf("body = %q, want %q", body, "second\n\nadds b")
+	}
+	want := map[string]Status{"a.txt": StatusModified, "b.txt": StatusAdded}
+	if len(entries) != len(want) {
+		t.Fatalf("got %d entries, want %d: %+v", len(entries), len(want), entries)
+	}
+	for _, e := range entries {
+		if got, ok := want[e.Path]; !ok || got != e.Status {
+			t.Errorf("entry %q status %v not in want %+v", e.Path, e.Status, want)
+		}
+	}
+
+	// Body with internal blank lines must round-trip.
+	body, _, err = ShowMetaCombined(dir, "HEAD~")
+	if err != nil {
+		t.Fatalf("ShowMetaCombined HEAD~: %v", err)
+	}
+	if body != "first commit\n\nWith a multi-paragraph\n\nbody." {
+		t.Errorf("body with blank lines: got %q", body)
+	}
+}
+
 func TestIsUnbornBranchErr(t *testing.T) {
 	cases := []struct {
 		name string
