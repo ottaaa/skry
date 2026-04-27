@@ -84,14 +84,21 @@ make build         # produces bin/skry
 ## Usage
 
 ```sh
-skry                 # open current repository
-skry /path/to/repo   # open a specific repository
+skry                       # open current repository
+skry /path/to/repo         # open a specific repository
+skry /path/to/repo/sub/dir # scope the tree to a subdirectory of a repo
 skry --version
-git diff | skry -    # pipe content as a stdin source (see below)
+git diff | skry -          # pipe content as a stdin source (see below)
 ```
 
 `skry` needs a git repository — it reads via `git` CLI under the hood. Press
 `?` once inside for the full keymap.
+
+When you point skry at a subdirectory of a git repo (rather than the
+toplevel), the tree is scoped to that subdirectory: file paths display
+relative to it and only files beneath it are listed. Git operations
+(branch / log / blame / status) still operate on the full repo. The
+header shows the scope (e.g. `repo/services/devops`).
 
 ### stdin
 

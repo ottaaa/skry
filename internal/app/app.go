@@ -44,6 +44,7 @@ type Model struct {
 	editor editor.Model
 	modal  modal.Modal
 
+	scopeDir    string // relative subdir under repoRoot to scope the tree to ("" = whole repo)
 	files       []string
 	statuses    map[string]git.Status
 	summary     summary
@@ -154,10 +155,57 @@ func appendIgnored(root string, files []string, seen map[string]bool) []string {
 	return files
 }
 
+// scopeFilter keeps only paths under scopeDir and strips the scopeDir prefix
+// from each. When scopeDir is "", paths are returned unchanged. The returned
+// slice is the input slice's storage (filtered in place).
+func scopeFilter(scopeDir string, paths []string) []string {
+	if scopeDir == "" {
+		return paths
+	}
+	prefix := scopeDir + "/"
+	out := paths[:0]
+	for _, p := range paths {
+		if !strings.HasPrefix(p, prefix) {
+			continue
+		}
+		out = append(out, strings.TrimPrefix(p, prefix))
+	}
+	return out
+}
+
+// scopeFilterStatuses keeps only entries whose path lives under scopeDir, with
+// the scopeDir prefix stripped. Used to filter the statuses map and entries
+// slice in lockstep with scopeFilter.
+func scopeFilterStatuses(scopeDir string, entries []git.StatusEntry) []git.StatusEntry {
+	if scopeDir == "" {
+		return entries
+	}
+	prefix := scopeDir + "/"
+	out := entries[:0]
+	for _, e := range entries {
+		if !strings.HasPrefix(e.Path, prefix) {
+			continue
+		}
+		e.Path = strings.TrimPrefix(e.Path, prefix)
+		out = append(out, e)
+	}
+	return out
+}
+
+// expandScope converts a tree-relative path (from m.files / m.statuses /
+// tree events) back to a path relative to the git toplevel, suitable for
+// editor.Open and git operations.
+func expandScope(scopeDir, path string) string {
+	if scopeDir == "" || path == "" {
+		return path
+	}
+	return scopeDir + "/" + path
+}
+
 // fsReload is a lighter sibling of loadRepo: it refreshes the file list,
 // statuses, and branch, but leaves the editor's currently-open file in place
 // (loadRepo replaces the editor entirely, which would close the user's view).
-func fsReload(root string, showIgnored bool) tea.Cmd {
+func fsReload(root, scopeDir string, showIgnored bool) tea.Cmd {
 	return func() tea.Msg {
 		files, err := git.ListFiles(root)
 		if err != nil {
@@ -167,6 +215,24 @@ func fsReload(root string, showIgnored bool) tea.Cmd {
 		if err != nil {
 			return fsReloadedMsg{err: err}
 		}
+		seen := make(map[string]bool, len(files))
+		for _, f := range files {
+			seen[f] = true
+		}
+		for _, e := range entries {
+			if !seen[e.Path] && e.Status != git.StatusDeleted {
+				files = append(files, e.Path)
+				seen[e.Path] = true
+			}
+		}
+		if showIgnored {
+			files = appendIgnored(root, files, seen)
+		}
+		// Scope reduction: drop everything outside scopeDir and strip the prefix
+		// so the tree starts inside the scope. Status summary still uses the
+		// scoped subset so the header counts reflect what the user can see.
+		files = scopeFilter(scopeDir, files)
+		entries = scopeFilterStatuses(scopeDir, entries)
 		statuses := map[string]git.Status{}
 		var sum summary
 		for _, e := range entries {
@@ -181,19 +247,6 @@ func fsReload(root string, showIgnored bool) tea.Cmd {
 			default:
 				sum.Other++
 			}
-		}
-		seen := make(map[string]bool, len(files))
-		for _, f := range files {
-			seen[f] = true
-		}
-		for _, e := range entries {
-			if !seen[e.Path] && e.Status != git.StatusDeleted {
-				files = append(files, e.Path)
-				seen[e.Path] = true
-			}
-		}
-		if showIgnored {
-			files = appendIgnored(root, files, seen)
 		}
 		branch, _ := git.CurrentBranch(root)
 		return fsReloadedMsg{files: files, statuses: statuses, summary: sum, branch: branch}
@@ -210,13 +263,18 @@ type fsReloadedMsg struct {
 
 type summary struct{ M, A, D, Other int }
 
-func New(repoRoot string) Model {
+// New constructs the root app model. repoRoot is the git toplevel; scopeDir
+// is an optional relative subdir under repoRoot — when non-empty the tree
+// only shows files beneath it, but git operations still run against the
+// real toplevel (paths are full from toplevel internally).
+func New(repoRoot, scopeDir string) Model {
 	// Best-effort open: a write failure must never crash the TUI. The log is
 	// diagnostic only (watcher errors, etc.); when Open fails we just run
 	// without one.
 	lg, _ := applog.Setup()
 	m := Model{
 		repoRoot: repoRoot,
+		scopeDir: scopeDir,
 		focus:    FocusTree,
 		tree:     tree.New(),
 		editor:   editor.New(repoRoot),
@@ -228,7 +286,7 @@ func New(repoRoot string) Model {
 }
 
 func (m Model) Init() tea.Cmd {
-	return tea.Batch(loadRepo(m.repoRoot, m.showIgnored), startWatcher(m.repoRoot, m.log))
+	return tea.Batch(loadRepo(m.repoRoot, m.scopeDir, m.showIgnored), startWatcher(m.repoRoot, m.log))
 }
 
 type repoLoadedMsg struct {
@@ -240,7 +298,7 @@ type repoLoadedMsg struct {
 	err      error
 }
 
-func loadRepo(root string, showIgnored bool) tea.Cmd {
+func loadRepo(root, scopeDir string, showIgnored bool) tea.Cmd {
 	return func() tea.Msg {
 		top, err := git.TopLevel(root)
 		if err != nil {
@@ -253,21 +311,6 @@ func loadRepo(root string, showIgnored bool) tea.Cmd {
 		entries, err := git.Statuses(top)
 		if err != nil {
 			return repoLoadedMsg{root: top, err: err}
-		}
-		statuses := map[string]git.Status{}
-		var sum summary
-		for _, e := range entries {
-			statuses[e.Path] = e.Status
-			switch e.Status {
-			case git.StatusModified:
-				sum.M++
-			case git.StatusAdded:
-				sum.A++
-			case git.StatusDeleted:
-				sum.D++
-			default:
-				sum.Other++
-			}
 		}
 		// Merge untracked into files if ls-files missed them (it shouldn't with --others).
 		seen := make(map[string]bool, len(files))
@@ -282,6 +325,23 @@ func loadRepo(root string, showIgnored bool) tea.Cmd {
 		}
 		if showIgnored {
 			files = appendIgnored(top, files, seen)
+		}
+		files = scopeFilter(scopeDir, files)
+		entries = scopeFilterStatuses(scopeDir, entries)
+		statuses := map[string]git.Status{}
+		var sum summary
+		for _, e := range entries {
+			statuses[e.Path] = e.Status
+			switch e.Status {
+			case git.StatusModified:
+				sum.M++
+			case git.StatusAdded:
+				sum.A++
+			case git.StatusDeleted:
+				sum.D++
+			default:
+				sum.Other++
+			}
 		}
 		branch, _ := git.CurrentBranch(top)
 		return repoLoadedMsg{root: top, files: files, statuses: statuses, summary: sum, branch: branch}
@@ -416,7 +476,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case fsChangedMsg:
 		// Coalesce any further events into the next refresh by issuing a
 		// single reload Cmd, then arm for the next watcher event.
-		return m, tea.Batch(fsReload(m.repoRoot, m.showIgnored), waitForFS(m.watcher))
+		return m, tea.Batch(fsReload(m.repoRoot, m.scopeDir, m.showIgnored), waitForFS(m.watcher))
 
 	case fileChangedMsg:
 		// Per-file fast path: just reload the editor's current buffer.
@@ -465,7 +525,10 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			_ = m.fileWatcher.Close()
 			m.fileWatcher = nil
 		}
-		return m, tea.Batch(loadRepo(msg.Path, m.showIgnored), startWatcher(msg.Path, m.log))
+		// A worktree switch lands in a different toplevel; the previous scope
+		// (if any) was relative to the old toplevel and no longer applies.
+		m.scopeDir = ""
+		return m, tea.Batch(loadRepo(msg.Path, m.scopeDir, m.showIgnored), startWatcher(msg.Path, m.log))
 
 	case toastExpiredMsg:
 		// Stale ticks (a newer toast bumped seq) are silently ignored —
@@ -550,7 +613,7 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, m.setToast("switch: "+msg.err.Error(), ToastError)
 		}
 		return m, tea.Batch(
-			loadRepo(m.repoRoot, m.showIgnored),
+			loadRepo(m.repoRoot, m.scopeDir, m.showIgnored),
 			m.setToast("switched to "+msg.name, ToastSuccess),
 		)
 
@@ -568,8 +631,12 @@ func (m Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m Model) handleOpenFile(msg events.OpenFileMsg) (tea.Model, tea.Cmd) {
 	m.modal = nil
+	// msg.Path is relative to scopeDir (the visible tree). The editor and
+	// file watcher both want a path from the git toplevel, so re-add the
+	// prefix here at the boundary.
 	status := m.statuses[msg.Path]
-	if err := m.editor.Open(msg.Path, status); err != nil {
+	fullPath := expandScope(m.scopeDir, msg.Path)
+	if err := m.editor.Open(fullPath, status); err != nil {
 		return m, m.setToast("open: "+err.Error(), ToastError)
 	}
 	if msg.Line > 0 {
@@ -579,7 +646,7 @@ func (m Model) handleOpenFile(msg events.OpenFileMsg) (tea.Model, tea.Cmd) {
 	m.tree.SetFocused(false)
 	m.editor.SetFocused(true)
 	m.pushRecent(msg.Path)
-	m.refocusFileWatcher(msg.Path)
+	m.refocusFileWatcher(fullPath)
 	return m, nil
 }
 
@@ -722,7 +789,7 @@ func (m Model) handleKey(km tea.KeyMsg) (tea.Model, tea.Cmd) {
 				tag = "on"
 			}
 			return m, tea.Batch(
-				fsReload(m.repoRoot, m.showIgnored),
+				fsReload(m.repoRoot, m.scopeDir, m.showIgnored),
 				m.setToast("show ignored: "+tag, ToastInfo),
 			)
 		}
@@ -756,16 +823,21 @@ func (m *Model) previewAt(msg events.CursorMovedMsg) {
 	if msg.Path == "" {
 		return
 	}
+	// msg.Path is scope-relative; the editor and file watcher want the path
+	// from the git toplevel. The folder-preview entries come from m.files
+	// (also scope-relative) and m.statuses keyed by scope-relative paths, so
+	// keep the dirPath scope-relative when computing folderEntries.
 	if msg.IsDir {
 		entries := m.folderEntries(msg.Path)
-		m.editor.OpenFolderPreview(msg.Path, entries, m.statuses)
+		m.editor.OpenFolderPreview(expandScope(m.scopeDir, msg.Path), entries, m.statuses)
 		m.refocusFileWatcher("")
 		return
 	}
-	if err := m.editor.Open(msg.Path, m.statuses[msg.Path]); err != nil && m.log != nil {
+	fullPath := expandScope(m.scopeDir, msg.Path)
+	if err := m.editor.Open(fullPath, m.statuses[msg.Path]); err != nil && m.log != nil {
 		m.log.Log("editor: open failed", "path", msg.Path, "err", err.Error())
 	}
-	m.refocusFileWatcher(msg.Path)
+	m.refocusFileWatcher(fullPath)
 }
 
 // folderEntries returns the immediate children of dirPath in the current file
@@ -801,12 +873,13 @@ func (m Model) folderEntries(dirPath string) []string {
 }
 
 // currentPath prefers the editor's open file; falls back to the tree's
-// currently-highlighted leaf.
+// currently-highlighted leaf. Returned path is relative to the git toplevel
+// (i.e. scopeDir is re-applied when sourced from the scope-relative tree).
 func (m Model) currentPath() string {
 	if p := m.editor.Path(); p != "" {
 		return p
 	}
-	return m.tree.SelectedPath()
+	return expandScope(m.scopeDir, m.tree.SelectedPath())
 }
 
 func (m Model) currentTreeOuter() int {
@@ -986,6 +1059,9 @@ func (m *Model) syncPreviewState() {
 
 func (m Model) renderHeader() string {
 	repo := filepath.Base(m.repoRoot)
+	if m.scopeDir != "" {
+		repo += "/" + m.scopeDir
+	}
 	summary := fmt.Sprintf("[M:%d A:%d D:%d]", m.summary.M, m.summary.A, m.summary.D)
 	branch := m.branch
 	if branch == "" {
