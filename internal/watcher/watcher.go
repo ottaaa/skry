@@ -176,13 +176,17 @@ func shouldSkip(path string) bool {
 
 // ShouldSkip reports whether path lives under one of the skip dirs (`.git/`,
 // `node_modules/`, `.venv/`, etc.). Used by the watcher to filter events and
-// by the app to filter the file tree when displaying ignored files.
+// by the app to filter the file tree when displaying ignored files. Accepts
+// both absolute and relative paths.
 func ShouldSkip(path string) bool {
 	base := filepath.Base(path)
 	if _, skip := skipDirs[base]; skip {
 		return true
 	}
-	for p := path; p != "" && p != "/"; p = filepath.Dir(p) {
+	// Walk parents until we hit a sentinel. filepath.Dir(".") returns "."
+	// (and Dir("/") returns "/"), so terminate on those too — otherwise this
+	// loops forever on a relative path like "ccp-search-poc/results/foo.md".
+	for p := path; p != "" && p != "/" && p != "."; p = filepath.Dir(p) {
 		b := filepath.Base(p)
 		if _, skip := skipDirs[b]; skip {
 			return true

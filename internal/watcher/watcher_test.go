@@ -24,6 +24,13 @@ func TestShouldSkip(t *testing.T) {
 		{"/repo/pkg/__pycache__/x.cpython-312.pyc", true},
 		{"/repo/.pytest_cache/v/cache/lastfailed", true},
 		{"/repo/.gradle/caches/x", true},
+		// Relative paths (used when filtering output of `git ls-files`).
+		{"ccp-search-poc/results/100k_bq_archive/report.md", false},
+		{"ccp-search-poc/.venv/lib/python3.12/site-packages/foo.py", true},
+		{"node_modules/pkg/index.js", true},
+		{"src/main.go", false},
+		{".", false},
+		{"", false},
 	}
 	for _, c := range cases {
 		if got := shouldSkip(c.path); got != c.want {
